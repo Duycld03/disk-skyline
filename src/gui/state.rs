@@ -81,6 +81,7 @@ pub struct GuiApp {
     pub banner_message: Option<(String, bool, f32)>, // (msg, is_error, timer)
     pub is_fullscreen: bool,
     pub font: Option<Font>,
+    pub backspace_timer: f32,
 }
 
 impl GuiApp {
@@ -137,6 +138,7 @@ impl GuiApp {
             banner_message: None,
             is_fullscreen: false,
             font: None,
+            backspace_timer: 0.0,
         }
     }
 

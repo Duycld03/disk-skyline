@@ -905,8 +905,8 @@ pub fn render_search_overlay(
     screen_w: f32,
     font: Option<&Font>,
 ) {
-    let bw = 520.0;
-    let bh = 46.0;
+    let bw = 540.0;
+    let bh = 50.0;
     let bx = (screen_w - bw) / 2.0;
     let by = 90.0;
 
@@ -915,12 +915,23 @@ pub fn render_search_overlay(
     draw_rectangle_lines(bx, by, bw, bh, 2.0, Color::new(0.2, 0.85, 0.95, 1.0));
 
     let (title_label, hint_label) = if lang == Language::Vi {
-        ("TÌM KIẾM:", "[Enter] Giữ vị trí  [Esc] Đóng")
+        (
+            "TÌM KIẾM:",
+            "[Enter] Giữ vị trí  [Esc] Đóng  (Gõ tên công trình)",
+        )
     } else {
-        ("SEARCH:", "[Enter] Confirm  [Esc] Close")
+        (
+            "SEARCH:",
+            "[Enter] Confirm  [Esc] Close  (Type building name)",
+        )
     };
 
-    let search_text = format!("🔍 {} {}_", title_label, query);
+    let display_query = if query.len() > 30 {
+        format!("...{}_", &query[query.len() - 27..])
+    } else {
+        format!("{}_", query)
+    };
+    let search_text = format!(">> {} {}", title_label, display_query);
     draw_text_f(
         &search_text,
         bx + 16.0,
@@ -930,26 +941,47 @@ pub fn render_search_overlay(
         font,
     );
 
-    // Matching info or hint
-    if let Some(matched) = matched_node {
-        let match_str = format!("→ {} ({})", matched.name, matched.formatted_size());
-        draw_text_f(
-            &match_str,
-            bx + 16.0,
-            by + 38.0,
-            12.0,
-            Color::new(0.3, 0.9, 0.5, 1.0),
-            font,
-        );
-    } else {
+    let trimmed = query.trim();
+    if trimmed.is_empty() {
         draw_text_f(
             hint_label,
             bx + 16.0,
             by + 38.0,
             11.0,
-            Color::new(0.6, 0.65, 0.72, 1.0),
+            Color::new(0.65, 0.70, 0.78, 1.0),
             font,
         );
+    } else {
+        let is_match = matched_node
+            .map(|m| m.name.to_lowercase().contains(&trimmed.to_lowercase()))
+            .unwrap_or(false);
+
+        if is_match {
+            let matched = matched_node.unwrap();
+            let match_str = format!("→ {} ({})", matched.name, matched.formatted_size());
+            draw_text_f(
+                &match_str,
+                bx + 16.0,
+                by + 38.0,
+                12.0,
+                Color::new(0.3, 0.95, 0.5, 1.0),
+                font,
+            );
+        } else {
+            let no_match_msg = if lang == Language::Vi {
+                format!("(x) Không tìm thấy công trình nào khớp với '{}'", trimmed)
+            } else {
+                format!("(x) No building matches '{}'", trimmed)
+            };
+            draw_text_f(
+                &no_match_msg,
+                bx + 16.0,
+                by + 38.0,
+                11.0,
+                Color::new(1.0, 0.45, 0.35, 1.0),
+                font,
+            );
+        }
     }
 }
 

@@ -210,7 +210,9 @@ impl App {
 
     pub fn update_search(&mut self, ch: char) {
         if let Some(ref mut query) = self.search_query {
-            query.push(ch);
+            if query.len() < 48 {
+                query.push(ch);
+            }
         }
         self.jump_to_search_match();
     }

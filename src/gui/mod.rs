@@ -110,11 +110,28 @@ pub async fn run_gui(app: App) {
             let prev_idx = gui.app.nav.selected_index;
             if is_key_pressed(KeyCode::Escape) {
                 gui.app.cancel_search();
+                gui.backspace_timer = 0.0;
             } else if is_key_pressed(KeyCode::Enter) {
                 gui.app.confirm_search();
-            } else if is_key_pressed(KeyCode::Backspace) {
-                gui.app.backspace_search();
+                gui.backspace_timer = 0.0;
             } else {
+                // Continuous Backspace key-repeat
+                if is_key_down(KeyCode::Backspace) {
+                    if is_key_pressed(KeyCode::Backspace) {
+                        gui.app.backspace_search();
+                        gui.backspace_timer = 0.0;
+                    } else {
+                        gui.backspace_timer += dt;
+                        if gui.backspace_timer >= 0.35 {
+                            gui.app.backspace_search();
+                            gui.backspace_timer = 0.31;
+                        }
+                    }
+                } else {
+                    gui.backspace_timer = 0.0;
+                }
+
+                // Poll typed characters
                 while let Some(ch) = get_char_pressed() {
                     if !ch.is_control() {
                         gui.app.update_search(ch);
@@ -133,7 +150,9 @@ pub async fn run_gui(app: App) {
                 }
             }
         } else {
-            // Normal game navigation inputs
+            // Flush character buffer continuously during exploration so movement keys don't leak into search
+            while get_char_pressed().is_some() {}
+            gui.backspace_timer = 0.0;
             let mut move_dir: f32 = 0.0;
 
             if is_key_down(KeyCode::Left) || is_key_down(KeyCode::A) {
@@ -151,8 +170,12 @@ pub async fn run_gui(app: App) {
 
             gui.avatar.vx = move_dir * GuiApp::WALK_SPEED;
 
-            // Jumping
-            if is_key_pressed(KeyCode::Space) && gui.avatar.is_grounded {
+            // Jumping (Space or W or Up arrow)
+            if (is_key_pressed(KeyCode::Space)
+                || is_key_pressed(KeyCode::W)
+                || is_key_pressed(KeyCode::Up))
+                && gui.avatar.is_grounded
+            {
                 gui.avatar.vy = GuiApp::JUMP_VELOCITY;
                 gui.avatar.is_grounded = false;
             }
@@ -216,6 +239,7 @@ pub async fn run_gui(app: App) {
 
             // Spotlight search trigger
             if is_key_pressed(KeyCode::Slash) {
+                while get_char_pressed().is_some() {}
                 gui.app.start_search();
             }
             // Demolition trigger
