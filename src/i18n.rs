@@ -284,6 +284,20 @@ impl Language {
         }
     }
 
+    pub fn open_success(&self, name: &str) -> String {
+        match self {
+            Language::Vi => format!("Đã mở '{}' bằng ứng dụng mặc định.", name),
+            Language::En => format!("Opened '{}' with default app.", name),
+        }
+    }
+
+    pub fn open_err(&self, name: &str) -> String {
+        match self {
+            Language::Vi => format!("Không thể mở '{}'.", name),
+            Language::En => format!("Could not open '{}'.", name),
+        }
+    }
+
     // Demolition Modal
     pub fn demolish_modal_title(&self) -> &'static str {
         match self {

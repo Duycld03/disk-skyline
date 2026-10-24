@@ -271,15 +271,39 @@ fn render_hud(app: &App, area: Rect, frame: &mut Frame) {
                 child.path.to_string_lossy(),
                 Style::default().fg(Color::White),
             ),
-            Span::raw(" | "),
-            Span::styled(
-                lang.scale_label(child.item_count()),
-                Style::default().fg(Color::LightBlue),
-            ),
         ])
     } else {
         Line::raw("")
     };
+
+    let mut hud_lines = vec![line1];
+    if let Some(ref q) = app.search_query {
+        let (prompt_text, hint_text) = match lang {
+            crate::i18n::Language::Vi => ("TÌM KIẾM SPOTLIGHT", "Enter: Giữ vị trí | Esc: Hủy"),
+            crate::i18n::Language::En => ("SPOTLIGHT SEARCH", "Enter: Confirm | Esc: Cancel"),
+        };
+        hud_lines.push(Line::from(vec![
+            Span::styled(
+                format!(" [{}] /", prompt_text),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("{}_", q),
+                Style::default()
+                    .fg(Color::White)
+                    .bg(Color::DarkGray)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("  ({})", hint_text),
+                Style::default().fg(Color::DarkGray),
+            ),
+        ]));
+    } else {
+        hud_lines.push(line2);
+    }
 
     let is_protected = selected_opt.map(|c| c.is_system_protected).unwrap_or(false);
     let mut key_spans = vec![
@@ -307,6 +331,24 @@ fn render_hud(app: &App, area: Rect, frame: &mut Frame) {
         key_spans.push(Span::raw(format!(" {}  ", lang.nav_demolish())));
     }
 
+    key_spans.push(Span::styled("[o]", Style::default().fg(Color::LightGreen)));
+    key_spans.push(Span::raw(format!(
+        " {}  ",
+        if lang == crate::i18n::Language::Vi {
+            "Mở"
+        } else {
+            "Open"
+        }
+    )));
+    key_spans.push(Span::styled("[/]", Style::default().fg(Color::LightYellow)));
+    key_spans.push(Span::raw(format!(
+        " {}  ",
+        if lang == crate::i18n::Language::Vi {
+            "Tìm"
+        } else {
+            "Search"
+        }
+    )));
     key_spans.push(Span::styled("[r]", Style::default().fg(Color::Cyan)));
     key_spans.push(Span::raw(format!(" {}  ", lang.nav_rescan())));
     key_spans.push(Span::styled("[L]", Style::default().fg(Color::Green)));
@@ -319,6 +361,7 @@ fn render_hud(app: &App, area: Rect, frame: &mut Frame) {
     key_spans.push(Span::raw(format!(" {}", lang.nav_quit())));
 
     let line3 = Line::from(key_spans);
-    let paragraph = Paragraph::new(vec![line1, line2, line3]).block(block);
+    hud_lines.push(line3);
+    let paragraph = Paragraph::new(hud_lines).block(block);
     frame.render_widget(paragraph, area);
 }

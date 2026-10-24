@@ -67,7 +67,11 @@ fn scan_node_recursive(
 
     let symlink_metadata = fs::symlink_metadata(path)?;
     let is_symlink = symlink_metadata.file_type().is_symlink();
-
+    let modified_secs_ago = symlink_metadata
+        .modified()
+        .ok()
+        .and_then(|t| t.elapsed().ok())
+        .map(|d| d.as_secs());
     let raw_name = path
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
@@ -89,6 +93,7 @@ fn scan_node_recursive(
             size,
             file_type,
             children: Vec::new(),
+            modified_secs_ago,
         });
     }
 
@@ -116,6 +121,7 @@ fn scan_node_recursive(
                 size: 0,
                 file_type,
                 children: Vec::new(),
+                modified_secs_ago,
             });
         }
     };
@@ -156,6 +162,7 @@ fn scan_node_recursive(
         size: total_size,
         file_type: BuildingCategory::from_path(path, true, is_hidden),
         children,
+        modified_secs_ago,
     };
 
     node.sort_children(sort_mode);

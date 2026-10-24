@@ -186,6 +186,47 @@ pub fn render_street(screen_w: f32, screen_h: f32, camera_x: f32) {
     }
 }
 
+pub fn render_street_radar(
+    placements: &[BuildingPlacement2D],
+    avatar_x: f32,
+    max_street_x: f32,
+    screen_w: f32,
+    time: f64,
+) {
+    if placements.is_empty() || max_street_x <= 0.0 {
+        return;
+    }
+
+    let rx = 12.0;
+    let ry = 70.0;
+    let rw = screen_w - 24.0;
+    let rh = 14.0;
+
+    // Dark backdrop for radar
+    draw_rectangle(rx, ry, rw, rh, Color::new(0.04, 0.06, 0.10, 0.90));
+    draw_rectangle_lines(rx, ry, rw, rh, 1.0, Color::new(0.25, 0.35, 0.50, 0.70));
+
+    // Draw building profile ticks
+    for p in placements {
+        let bx = rx + (p.x / max_street_x) * rw;
+        let bw = ((p.width / max_street_x) * rw).max(2.0);
+        let bh = ((p.height / 380.0) * (rh - 4.0)).clamp(2.0, rh - 4.0);
+        let by = ry + rh - 2.0 - bh;
+        draw_rectangle(bx, by, bw, bh, Color::new(0.3, 0.6, 0.85, 0.8));
+    }
+
+    // Avatar position marker (blinking amber bar)
+    let av_rx = (rx + (avatar_x / max_street_x) * rw).clamp(rx + 2.0, rx + rw - 4.0);
+    let pulse = ((time * 6.0).sin() as f32 * 0.2 + 0.8).clamp(0.6, 1.0);
+    draw_rectangle(
+        av_rx - 2.0,
+        ry + 2.0,
+        4.0,
+        rh - 4.0,
+        Color::new(1.0, 0.85, 0.2, pulse),
+    );
+}
+
 pub fn render_building(
     placement: &BuildingPlacement2D,
     node: &BuildingNode,
@@ -200,7 +241,7 @@ pub fn render_building(
     let top_y = ground - placement.height;
     let cat = node.file_type;
     let col = category_color(cat);
-
+    let is_stale = node.is_stale();
     // Dark building core background
     draw_rectangle(
         screen_x,
@@ -246,9 +287,13 @@ pub fn render_building(
             let seed = (placement.node_index * 31 + row_idx * 17 + col_idx * 7) % 10;
             let is_lit = seed < 6;
             let win_col = if is_lit {
-                Color::new(0.98, 0.90, 0.45, 0.85) // Warm lit window
+                if is_stale {
+                    Color::new(0.55, 0.50, 0.30, 0.45) // Dim abandoned window
+                } else {
+                    Color::new(0.98, 0.90, 0.45, 0.85) // Warm lit window
+                }
             } else {
-                Color::new(0.10, 0.15, 0.20, 0.70) // Dark window
+                Color::new(0.08, 0.12, 0.16, 0.70) // Dark window
             };
             draw_rectangle(wx, wy, win_size, win_size, win_col);
             wx += win_size + win_gap;
@@ -336,7 +381,11 @@ pub fn render_building(
         let border_c = Color::new(col.r, col.g, col.b, if is_selected { 0.95 } else { 0.65 });
         draw_rectangle_lines(sign_x, sign_y, sign_w, sign_h, 1.0, border_c);
 
-        let badge = building_category_badge(cat, node.is_dir, node.is_system_protected);
+        let badge = if is_stale {
+            "[OLD]"
+        } else {
+            building_category_badge(cat, node.is_dir, node.is_system_protected)
+        };
         let full_text = format!("{} {}", badge, node.name);
         let fitted_text = fit_text_to_width(&full_text, sign_w - 6.0, 11.0, font);
         draw_text_f(
@@ -412,7 +461,11 @@ pub fn render_building(
         );
 
         // Row 2: Formatted Size
-        let size_str = format_bytes(node.size);
+        let size_str = if is_stale {
+            format!("{} [OLD]", format_bytes(node.size))
+        } else {
+            format_bytes(node.size)
+        };
         let size_text = fit_text_to_width(&size_str, plate_w - 6.0, 10.0, font);
         draw_text_f(
             &size_text,
@@ -632,9 +685,9 @@ pub fn render_rpg_hud(
     );
 
     let lang_hint = if lang == Language::Vi {
-        "[L] Đổi sang English".to_string()
+        "[o] Mở  [/] Tìm  [L] Đổi sang English".to_string()
     } else {
-        "[L] Switch to Vietnamese".to_string()
+        "[o] Open  [/] Search  [L] Switch to Vietnamese".to_string()
     };
     draw_text_f(
         &lang_hint,
@@ -753,9 +806,9 @@ pub fn render_rpg_hud(
 
     // Key command bar hints
     let hotkeys = if lang == Language::Vi {
-        "[A/D/Left/Right] Đi bộ  [Space] Nhảy  [Enter] Vào  [Esc/Backspace] Lùi  [Tab] Sắp xếp  [D] Phá dỡ  [F11] Fullscreen  [Q] Thoát"
+        "[A/D/Left/Right] Đi bộ  [Space] Nhảy  [Enter] Vào  [o] Mở  [/] Tìm  [Esc/Backspace] Lùi  [Tab] Sắp xếp  [D] Phá dỡ  [F11] Fullscreen  [Q] Thoát"
     } else {
-        "[A/D/Left/Right] Walk  [Space] Jump  [Enter] Enter  [Esc/Backspace] Back  [Tab] Sort  [D] Demolish  [F11] Fullscreen  [Q] Quit"
+        "[A/D/Left/Right] Walk  [Space] Jump  [Enter] Enter  [o] Open  [/] Search  [Esc/Backspace] Back  [Tab] Sort  [D] Demolish  [F11] Fullscreen  [Q] Quit"
     };
     draw_text_f(
         hotkeys,
@@ -843,6 +896,61 @@ pub fn render_demolish_modal(
         Color::new(0.25, 0.28, 0.35, 1.0),
     );
     draw_text_f(cancel_btn, mx + 345.0, my + 162.0, 15.0, WHITE, font);
+}
+
+pub fn render_search_overlay(
+    query: &str,
+    matched_node: Option<&BuildingNode>,
+    lang: Language,
+    screen_w: f32,
+    font: Option<&Font>,
+) {
+    let bw = 520.0;
+    let bh = 46.0;
+    let bx = (screen_w - bw) / 2.0;
+    let by = 90.0;
+
+    // Background card
+    draw_rectangle(bx, by, bw, bh, Color::new(0.06, 0.08, 0.14, 0.96));
+    draw_rectangle_lines(bx, by, bw, bh, 2.0, Color::new(0.2, 0.85, 0.95, 1.0));
+
+    let (title_label, hint_label) = if lang == Language::Vi {
+        ("TÌM KIẾM:", "[Enter] Giữ vị trí  [Esc] Đóng")
+    } else {
+        ("SEARCH:", "[Enter] Confirm  [Esc] Close")
+    };
+
+    let search_text = format!("🔍 {} {}_", title_label, query);
+    draw_text_f(
+        &search_text,
+        bx + 16.0,
+        by + 20.0,
+        15.0,
+        Color::new(1.0, 0.9, 0.2, 1.0),
+        font,
+    );
+
+    // Matching info or hint
+    if let Some(matched) = matched_node {
+        let match_str = format!("→ {} ({})", matched.name, matched.formatted_size());
+        draw_text_f(
+            &match_str,
+            bx + 16.0,
+            by + 38.0,
+            12.0,
+            Color::new(0.3, 0.9, 0.5, 1.0),
+            font,
+        );
+    } else {
+        draw_text_f(
+            hint_label,
+            bx + 16.0,
+            by + 38.0,
+            11.0,
+            Color::new(0.6, 0.65, 0.72, 1.0),
+            font,
+        );
+    }
 }
 
 pub fn render_banner(msg: &str, is_error: bool, screen_w: f32, font: Option<&Font>) {

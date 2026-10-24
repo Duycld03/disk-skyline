@@ -119,6 +119,7 @@ pub struct BuildingNode {
     pub size: u64,
     pub file_type: BuildingCategory,
     pub children: Vec<BuildingNode>,
+    pub modified_secs_ago: Option<u64>,
 }
 
 impl BuildingNode {
@@ -141,6 +142,7 @@ impl BuildingNode {
             size,
             file_type,
             children,
+            modified_secs_ago: None,
         }
     }
 
@@ -163,9 +165,19 @@ impl BuildingNode {
             size,
             file_type,
             children,
+            modified_secs_ago: None,
         }
     }
 
+    pub fn is_stale(&self) -> bool {
+        // 180 days in seconds = 180 * 24 * 3600 = 15_552_000
+        self.modified_secs_ago.is_some_and(|s| s >= 15_552_000)
+    }
+
+    pub fn with_modified_secs_ago(mut self, secs: Option<u64>) -> Self {
+        self.modified_secs_ago = secs;
+        self
+    }
     pub fn item_count(&self) -> usize {
         if self.is_dir {
             self.children.len()
@@ -433,5 +445,40 @@ mod tests {
         assert!(!is_os_critical_path(Path::new("/home/user/project")));
         assert!(!is_os_critical_path(Path::new("/tmp/build")));
         assert!(!is_os_critical_path(Path::new("src/main.rs")));
+    }
+
+    #[test]
+    fn test_building_node_staleness() {
+        let mut fresh = BuildingNode::new(
+            "fresh.rs".into(),
+            PathBuf::from("fresh.rs"),
+            false,
+            false,
+            100,
+            vec![],
+        );
+        fresh.modified_secs_ago = Some(3600); // 1 hour ago
+        assert!(!fresh.is_stale());
+
+        let mut stale = BuildingNode::new(
+            "old.zip".into(),
+            PathBuf::from("old.zip"),
+            false,
+            false,
+            100,
+            vec![],
+        );
+        stale.modified_secs_ago = Some(200 * 24 * 3600); // 200 days ago (> 180 days)
+        assert!(stale.is_stale());
+
+        let unknown = BuildingNode::new(
+            "unknown".into(),
+            PathBuf::from("unknown"),
+            false,
+            false,
+            100,
+            vec![],
+        );
+        assert!(!unknown.is_stale());
     }
 }

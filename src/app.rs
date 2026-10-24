@@ -13,6 +13,8 @@ pub struct App {
     pub should_quit: bool,
     pub demolish_state: Option<DemolishState>,
     pub language: crate::i18n::Language,
+    pub search_query: Option<String>,
+    pub pre_search_index: Option<usize>,
 }
 
 impl App {
@@ -25,6 +27,8 @@ impl App {
             should_quit: false,
             demolish_state: None,
             language: crate::i18n::Language::default(),
+            search_query: None,
+            pre_search_index: None,
         }
     }
 
@@ -174,7 +178,101 @@ impl App {
             }
         }
     }
+    pub fn open_current_selected(&mut self) -> bool {
+        let child_info = {
+            let current_node = self.current_node();
+            current_node
+                .children
+                .get(self.nav.selected_index)
+                .map(|child| (child.name.clone(), child.path.clone()))
+        };
+
+        if let Some((name, path)) = child_info {
+            match launch_default_app(&path) {
+                Ok(_) => {
+                    self.status_message = Some((self.language.open_success(&name), false));
+                    true
+                }
+                Err(_) => {
+                    self.status_message = Some((self.language.open_err(&name), true));
+                    false
+                }
+            }
+        } else {
+            false
+        }
+    }
+
+    pub fn start_search(&mut self) {
+        self.pre_search_index = Some(self.nav.selected_index);
+        self.search_query = Some(String::new());
+    }
+
+    pub fn update_search(&mut self, ch: char) {
+        if let Some(ref mut query) = self.search_query {
+            query.push(ch);
+        }
+        self.jump_to_search_match();
+    }
+
+    pub fn backspace_search(&mut self) {
+        if let Some(ref mut query) = self.search_query {
+            query.pop();
+        }
+        self.jump_to_search_match();
+    }
+
+    pub fn cancel_search(&mut self) {
+        self.search_query = None;
+        if let Some(idx) = self.pre_search_index.take() {
+            self.nav.selected_index = idx;
+        }
+    }
+
+    pub fn confirm_search(&mut self) {
+        self.search_query = None;
+        self.pre_search_index = None;
+    }
+
+    pub fn jump_to_search_match(&mut self) {
+        if let Some(ref query) = self.search_query {
+            if query.is_empty() {
+                return;
+            }
+            let q = query.to_lowercase();
+            let current_node = self.current_node();
+            if let Some((idx, _)) = current_node
+                .children
+                .iter()
+                .enumerate()
+                .find(|(_, child)| child.name.to_lowercase().contains(&q))
+            {
+                self.nav.selected_index = idx;
+            }
+        }
+    }
+
     pub fn handle_key(&mut self, key: KeyEvent) {
+        // If search mode is active, handle typing
+        if self.search_query.is_some() {
+            match key.code {
+                KeyCode::Esc => {
+                    self.cancel_search();
+                }
+                KeyCode::Enter => {
+                    self.confirm_search();
+                }
+                KeyCode::Backspace => {
+                    self.backspace_search();
+                }
+                KeyCode::Char(c) => {
+                    self.update_search(c);
+                }
+                _ => {}
+            }
+            return;
+        }
+
         // If demolition modal is active, delegate keys to modal
         if let Some(mut state) = self.demolish_state.take() {
             match state.handle_key(key) {
@@ -261,8 +359,46 @@ impl App {
             KeyCode::Char('L') => {
                 self.language = self.language.toggle();
             }
+            KeyCode::Char('o') | KeyCode::Char('O') => {
+                self.open_current_selected();
+            }
+            KeyCode::Char('/') => {
+                self.start_search();
+            }
             _ => {}
         }
+    }
+}
+
+pub fn launch_default_app(path: &std::path::Path) -> Result<(), std::io::Error> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", &path.to_string_lossy()])
+            .creation_flags(0x00000008)
+            .spawn()?;
+        Ok(())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(path)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()?;
+        Ok(())
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(path)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()?;
+        Ok(())
     }
 }
 
@@ -453,5 +589,56 @@ mod tests {
         assert!(app.status_message.is_some());
         let (en_msg, _) = app.status_message.clone().unwrap();
         assert!(en_msg.contains("is a single file, cannot enter"));
+    }
+
+    #[test]
+    fn test_spotlight_search_filtering_and_jumping() {
+        let tree = create_mock_tree(); // root has "src" (idx 0) and "docs" (idx 1)
+        let mut app = App::new(tree, ScannerOptions::default());
+
+        assert_eq!(app.nav.selected_index, 0);
+        assert!(app.search_query.is_none());
+
+        // Start search
+        app.start_search();
+        assert_eq!(app.search_query, Some(String::new()));
+
+        // Type 'd' -> matches "docs" (idx 1)
+        app.update_search('d');
+        assert_eq!(app.search_query, Some("d".to_string()));
+        assert_eq!(app.nav.selected_index, 1);
+
+        // Type 'o' -> matches "docs"
+        app.update_search('o');
+        assert_eq!(app.nav.selected_index, 1);
+
+        // Backspace 'o'
+        app.backspace_search();
+        assert_eq!(app.search_query, Some("d".to_string()));
+
+        // Confirm search
+        app.confirm_search();
+        assert!(app.search_query.is_none());
+        assert_eq!(app.nav.selected_index, 1);
+
+        // Start and Cancel search restores previous index
+        app.start_search();
+        app.update_search('s'); // jumps to "src" (idx 0)
+        assert_eq!(app.nav.selected_index, 0);
+        app.cancel_search();
+        assert!(app.search_query.is_none());
+        assert_eq!(app.nav.selected_index, 1); // restored back to docs!
+    }
+
+    #[test]
+    fn test_open_current_selected_feedback() {
+        let tree = create_mock_tree();
+        let mut app = App::new(tree, ScannerOptions::default());
+
+        // Call open on selected item
+        let _ = app.open_current_selected();
+        assert!(app.status_message.is_some());
+        let (msg, _) = app.status_message.unwrap();
+        assert!(msg.contains("src"));
     }
 }

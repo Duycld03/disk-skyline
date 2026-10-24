@@ -55,6 +55,14 @@ Path: /home/user/workspace/disk-skyline/src/model.rs | Scale: 1 stories (items)
   - Horizontal panning along avenues with smooth camera auto-centering.
   - Drill down into directories (`Enter`) and pop back out (`Esc` / `Backspace`).
   - Active real-time street minimap (`*` cursor and `#` viewport camera).
+- 🔍 **Spotlight Search Engine (`/`)**:
+  - Instant fuzzy search across building names in the active avenue.
+  - Automatically warps camera and avatar focus directly to matched files in real time.
+- 📂 **External Default Opener (`o`)**:
+  - Non-blocking host OS launching for files and folders (`xdg-open` on Linux, `open` on macOS, `cmd /c start` on Windows).
+  - Inspect code in VS Code, images in default viewers, or open directories without leaving Disk Skyline.
+- ⏳ **File Staleness & Age Indicator**:
+  - Files older than 180 days are recognized as stale: windows dim to an abandoned hue, and buildings display clear `[OLD]` / `[CŨ]` badges.
 - 🌐 **Native Bilingual Support (i18n)**:
   - Supports **Vietnamese (Tiếng Việt)** and **English**.
   - Auto-detects OS locale (`LANG`/`LC_ALL`).
@@ -72,6 +80,9 @@ Path: /home/user/workspace/disk-skyline/src/model.rs | Scale: 1 stories (items)
 ### 🎮 2D Desktop Game Window (`disk-skyline-gui`)
 Looking for a full gaming experience? Run `disk-skyline-gui` (or double-click `disk-skyline-gui.exe` on Windows):
 - 🏃 **Pixel Avatar**: Stroll along the avenue (`A`/`D`/Arrow keys), jump on `Space`, and face buildings in real-time.
+- 🗺️ **Street Radar Minimap**: Sleek 14px radar bar under the HUD rendering the entire avenue's height profile with real-time avatar tracking.
+- 🔍 **Interactive Spotlight Overlay**: Press `/` to bring up a glowing cyber search bar and jump between buildings.
+- 🏷️ **Neon Facade Signboards & Nameplates**: Crisp building identification with category badges (`[DIR]`, `[CODE]`, `[MEDIA]`, `[OLD]`).
 - 🌌 **Starfield & Horizon**: Parallax twinkling stars, city streetlights, illuminated window grids, and illuminated rooftops.
 - ⚔️ **RPG Status HUD**: Disk storage rendered as an arcade Mana/HP capacity bar.
 - 💥 **Particle Explosions**: Watch files crumble into pixel debris when demolished!
@@ -113,6 +124,8 @@ cargo build --release
 | `Tab` | Cycle zoning / sort mode | Đảo chế độ sắp xếp (Dung lượng, Tên, Phân loại) |
 | `d` / `Delete` | Demolish building | Phá dỡ / Giải phóng công trình |
 | `r` / `F5` | On-demand rescan | Quét và đồng bộ lại thư mục hiện tại |
+| `o` / `O` | Open in default host app | Mở tệp/thư mục bằng ứng dụng mặc định của hệ điều hành |
+| `/` | Spotlight search | Tìm kiếm nhanh công trình trong phố |
 | `L` | **Toggle Language (EN $\leftrightarrow$ VI)** | **Đổi ngôn ngữ Tiếng Việt $\leftrightarrow$ English** |
 | `q` / `Ctrl+C` | Exit application | Thoát chương trình |
 

@@ -106,6 +106,32 @@ pub async fn run_gui(app: App) {
                 gui.banner_message = Some((cancel_msg, false, 2.0));
                 gui.modal = None;
             }
+        } else if gui.app.search_query.is_some() {
+            let prev_idx = gui.app.nav.selected_index;
+            if is_key_pressed(KeyCode::Escape) {
+                gui.app.cancel_search();
+            } else if is_key_pressed(KeyCode::Enter) {
+                gui.app.confirm_search();
+            } else if is_key_pressed(KeyCode::Backspace) {
+                gui.app.backspace_search();
+            } else {
+                while let Some(ch) = get_char_pressed() {
+                    if !ch.is_control() {
+                        gui.app.update_search(ch);
+                    }
+                }
+            }
+
+            // If selected building changed during search, warp avatar smoothly to target
+            if gui.app.nav.selected_index != prev_idx {
+                if let Some(p) = placements
+                    .iter()
+                    .find(|pl| pl.node_index == gui.app.nav.selected_index)
+                {
+                    gui.avatar.x = p.x + p.width / 2.0;
+                    gui.avatar.vx = 0.0;
+                }
+            }
         } else {
             // Normal game navigation inputs
             let mut move_dir: f32 = 0.0;
@@ -180,6 +206,18 @@ pub async fn run_gui(app: App) {
                 gui.banner_message = Some((lang_msg, false, 2.0));
             }
 
+            // Open selected file/folder in default host application
+            if is_key_pressed(KeyCode::O) {
+                gui.app.open_current_selected();
+                if let Some((msg, is_err)) = gui.app.status_message.take() {
+                    gui.banner_message = Some((msg, is_err, 2.5));
+                }
+            }
+
+            // Spotlight search trigger
+            if is_key_pressed(KeyCode::Slash) {
+                gui.app.start_search();
+            }
             // Demolition trigger
             let trigger_demolish = is_key_pressed(KeyCode::Delete)
                 || ((is_key_pressed(KeyCode::D) || is_key_pressed(KeyCode::Delete))
@@ -222,6 +260,7 @@ pub async fn run_gui(app: App) {
         // 4. Render Scene
         render_night_sky(&gui.stars, screen_w, screen_h, gui.camera_x, time);
         render_street(screen_w, screen_h, gui.camera_x);
+        render_street_radar(&placements, gui.avatar.x, max_street_x, screen_w, time);
 
         // Render Buildings
         let curr_node = gui.app.current_node();
@@ -249,6 +288,11 @@ pub async fn run_gui(app: App) {
         let selected_child = gui.app.current_selected_child();
         render_rpg_hud(&gui.app, selected_child, screen_w, screen_h, font_ref);
 
+        // Render Search Overlay if active
+        if let Some(ref q) = gui.app.search_query {
+            let matched_node = gui.app.current_selected_child();
+            render_search_overlay(q, matched_node, gui.app.language, screen_w, font_ref);
+        }
         // Render Modal or Banner if active
         if let Some(m) = &gui.modal {
             render_demolish_modal(m, gui.app.language, screen_w, screen_h, font_ref);
