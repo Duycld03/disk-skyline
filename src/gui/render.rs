@@ -685,9 +685,9 @@ pub fn render_rpg_hud(
     );
 
     let lang_hint = if lang == Language::Vi {
-        "[o] Mở  [/] Tìm  [L] Đổi sang English".to_string()
+        "[o] Mở  [/] Tìm  [L] English".to_string()
     } else {
-        "[o] Open  [/] Search  [L] Switch to Vietnamese".to_string()
+        "[o] Open  [/] Search  [L] Tiếng Việt".to_string()
     };
     draw_text_f(
         &lang_hint,
