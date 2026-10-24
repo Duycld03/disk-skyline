@@ -34,3 +34,14 @@ The system SHALL allow users to toggle the active language dynamically between V
 #### Scenario: Toggling language back
 - **WHEN** the user is viewing the skyline in English and presses `L`
 - **THEN** the UI switches back to Vietnamese
+
+### Requirement: Localized Navigation Feedback and Font Glyph Integrity
+The application SHALL localize all runtime navigation feedback messages through the active language dictionary and ensure graphical window font rendering displays all characters without square box glyphs (`[][]`).
+
+#### Scenario: Attempting to drill down into a single file in English mode
+- **WHEN** the application language is set to English and the user attempts to enter a single file
+- **THEN** the system displays an English error notice without mixed Vietnamese text
+
+#### Scenario: Rendering Vietnamese diacritics without broken boxes
+- **WHEN** the application displays Vietnamese text in the graphical window
+- **THEN** accented letters and special characters render cleanly without square box glyphs (`[][]`)
