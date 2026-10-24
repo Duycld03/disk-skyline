@@ -5,9 +5,11 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 
-**Transform your filesystem storage into an interactive, cyberpunk-inspired 2D urban skyline right inside your terminal.**
+**Transform your filesystem storage into an interactive, cyberpunk-inspired 2D urban skyline right inside your terminal or as a native 2D desktop game window.**
 
-Written in safe, blazing-fast Rust using [Ratatui](https://ratatui.rs) and [Crossterm](https://github.com/crossterm-rs/crossterm).
+Featuring **dual binary targets**:
+1. 🖥️ **`disk-skyline`**: Blazing-fast terminal TUI powered by [Ratatui](https://ratatui.rs) and [Crossterm](https://github.com/crossterm-rs/crossterm).
+2. 🎮 **`disk-skyline-gui`**: Standalone 60 FPS 2D desktop arcade game window powered by [Macroquad](https://macroquad.rs), featuring a walking pixel avatar, jumping physics, smooth camera tracking, retro RPG HUD, and explosion particle effects!
 
 ```text
 ================================================================================
@@ -62,6 +64,14 @@ Path: /home/user/workspace/disk-skyline/src/model.rs | Scale: 1 stories (items)
   - Reclaims disk space and prunes in-memory trees without requiring a slow full rescan.
   - Two-tier safety confirmation: requires typing `YES` for files $\ge$ 1 GB or restricted bunkers.
 
+
+### 🎮 2D Desktop Game Window (`disk-skyline-gui`)
+Looking for a full gaming experience? Run `disk-skyline-gui` (or double-click `disk-skyline-gui.exe` on Windows):
+- 🏃 **Pixel Avatar**: Stroll along the avenue (`A`/`D`/Arrow keys), jump on `Space`, and face buildings in real-time.
+- 🌌 **Starfield & Horizon**: Parallax twinkling stars, city streetlights, illuminated window grids, and illuminated rooftops.
+- ⚔️ **RPG Status HUD**: Disk storage rendered as an arcade Mana/HP capacity bar.
+- 💥 **Particle Explosions**: Watch files crumble into pixel debris when demolished!
+- 🪟 **Desktop Ready**: Configurable `1280x720` resolution with instant fullscreen toggle (`F11`).
 ---
 
 ## 🚀 Installation
@@ -82,8 +92,10 @@ cargo install --git https://github.com/Duycld03/disk-skyline
 git clone https://github.com/Duycld03/disk-skyline.git
 cd disk-skyline
 cargo build --release
+# Run terminal CLI:
 ./target/release/disk-skyline
-```
+# Or launch 2D Game window:
+./target/release/disk-skyline-gui
 
 ---
 

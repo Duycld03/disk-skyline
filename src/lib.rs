@@ -1,5 +1,6 @@
 pub mod app;
 pub mod demolish;
+pub mod gui;
 pub mod i18n;
 pub mod model;
 pub mod render;
