@@ -29,5 +29,5 @@
 
 ## 5. Git Repository Setup & GitHub Publishing
 
-- [ ] 5.1 Initialize git repository (`git init -b main`) and verify `git status` honors `.gitignore`.
-- [ ] 5.2 Create initial commit and publish public repository using GitHub CLI (`gh repo create Duycld03/disk-skyline --public --source=. --remote=origin --push`).
+- [x] 5.1 Initialize git repository (`git init -b main`) and verify `git status` honors `.gitignore`.
+- [x] 5.2 Create initial commit and publish public repository using GitHub CLI (`gh repo create Duycld03/disk-skyline --public --source=. --remote=origin --push`).
