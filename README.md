@@ -76,9 +76,9 @@ Path: /home/user/workspace/disk-skyline/src/model.rs | Scale: 1 stories (items)
   - Reclaims disk space and prunes in-memory trees without requiring a slow full rescan.
   - Two-tier safety confirmation: requires typing `YES` for files $\ge$ 1 GB or restricted bunkers.
 - 🚜 **System Scrapyard Avenue & Bulldozer Cleaner (`J` / `C` / `--scrapyard`)**:
-  - Fast non-blocking probes detect developer bloat and reclaimable junk: Docker dangling images/stopped containers/volumes (`docker system df`), disabled Snap revisions (`snap list --all`), global package caches (`npm`, `pip`, `uv`, `cargo`), and package archives (`/var/cache/apt/archives`).
+  - Fast non-blocking probes detect developer bloat and reclaimable junk: Docker dangling images/stopped containers/volumes (`docker system df`), disabled Snap revisions (`snap list --all`), global package caches (`npm`, `pip` $\ge$ 1 MB, `uv`, `cargo`), user-owned `/tmp` clutter (> 50 MB), and package archives (`/var/cache/apt/archives`).
   - Visualizes reclaimable space as an industrial **"Scrapyard Avenue" (Đại Lộ Phế Liệu)** with amber rust skyline towers and `[SCRAP]` neon signboards.
-  - Target individual junk towers with `d` to execute platform-native purges, or trigger the **Bulldozer batch cleaner (`C`)** to sweep the avenue and reclaim gigabytes!
+  - Target individual junk towers with `X` / `Delete` to execute platform-native purges, or trigger the **Bulldozer batch cleaner (`C`)** to sweep user-level junk safely without sudo password loops!
 
 <p align="center">
   <img src="docs/images/disk-skyline-scrapyard.png" alt="Disk Skyline Scrapyard Avenue UI" width="900" />
@@ -86,7 +86,7 @@ Path: /home/user/workspace/disk-skyline/src/model.rs | Scale: 1 stories (items)
 
 ### 🎮 2D Desktop Game Window (`disk-skyline-gui`)
 Looking for a full gaming experience? Run `disk-skyline-gui` (or double-click `disk-skyline-gui.exe` on Windows):
-- 🏃 **Pixel Avatar**: Stroll along the avenue (`A`/`D`/Arrow keys), jump on `Space`, and face buildings in real-time.
+- 🏃 **Pixel Avatar**: Stroll along the avenue (`A`/`D`/Arrow keys), jump on `W`/`Space`, demolish with `X`/`Delete`, and face buildings in real-time.
 - 🗺️ **Street Radar Minimap**: Sleek 14px radar bar under the HUD rendering the entire avenue's height profile with real-time avatar tracking.
 - 🔍 **Interactive Spotlight Overlay**: Press `/` to bring up a glowing cyber search bar and jump between buildings.
 - 🏷️ **Neon Facade Signboards & Nameplates**: Crisp building identification with category badges (`[DIR]`, `[CODE]`, `[MEDIA]`, `[OLD]`).
@@ -125,19 +125,20 @@ cargo build --release
 
 | Key | Action | Mô tả (Tiếng Việt) |
 | :--- | :--- | :--- |
-| `←` / `→` / `h` / `l` | Stroll along the street | Dạo phố / Di chuyển camera |
+| `A` / `D` or `←` / `→` | Stroll along the street | Dạo phố / Di chuyển qua lại |
+| `W` / `Space` | Jump | Nhảy |
 | `Enter` | Enter building / Drill down | Đi vào trong tòa nhà / thư mục con |
 | `Esc` / `Backspace` / `u` | Exit to parent street | Đi ra ngoài / quay lại thư mục cha |
 | `Tab` | Cycle zoning / sort mode | Đảo chế độ sắp xếp (Dung lượng, Tên, Phân loại) |
-| `d` / `Delete` | Demolish building | Phá dỡ / Giải phóng công trình |
+| `X` / `Delete` (or `d` in TUI) | Demolish building | Phá dỡ / Giải phóng công trình |
 | `r` / `F5` | On-demand rescan | Quét và đồng bộ lại thư mục hiện tại |
 | `o` / `O` | Open in default host app | Mở tệp/thư mục bằng ứng dụng mặc định của hệ điều hành |
 | `/` | Spotlight search | Tìm kiếm nhanh công trình trong phố |
 | `J` | **Toggle Scrapyard Avenue** | **Chuyển sang Đại Lộ Phế Liệu (Junk Cleaner)** |
-| `C` | **Bulldozer Clean All (in Scrapyard)** | **Xe ủi dọn sạch bãi phế liệu** |
+| `C` | **Bulldozer Clean All (in Scrapyard)** | **Xe ủi dọn sạch rác an toàn (không pop-up sudo)** |
 | `L` | **Toggle Language (EN $\leftrightarrow$ VI)** | **Đổi ngôn ngữ Tiếng Việt $\leftrightarrow$ English** |
+| `F11` | Fullscreen toggle (GUI) | Bật/tắt chế độ toàn màn hình |
 | `q` / `Ctrl+C` | Exit application | Thoát chương trình |
-
 ---
 
 ## 🛠️ CLI Arguments

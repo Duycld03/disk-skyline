@@ -179,8 +179,8 @@ impl Language {
 
     pub fn protected_demolish_disabled_key(&self) -> &'static str {
         match self {
-            Language::Vi => "[d/Del] Khóa hệ thống",
-            Language::En => "[d/Del] System Locked",
+            Language::Vi => "[x/Del] Khóa hệ thống",
+            Language::En => "[x/Del] System Locked",
         }
     }
 

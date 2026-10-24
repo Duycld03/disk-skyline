@@ -63,7 +63,7 @@ pub struct BuildingPlacement2D {
     pub height: f32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GuiDemolishModal {
     pub target_index: usize,
     pub target_name: String,
@@ -458,5 +458,25 @@ mod tests {
         gui.update_physics(0.1, 1280.0, 720.0, 2000.0);
         assert_eq!(gui.particles.len(), 70);
         assert!(gui.particles[0].life > 0.0);
+    }
+
+    #[test]
+    fn test_d_key_walking_and_x_demolition_contract() {
+        let mut gui = create_mock_gui_app();
+        assert_eq!(gui.avatar.facing, Direction::Right);
+        assert_eq!(gui.modal, None);
+
+        // D key sets positive walking velocity without triggering demolition modal
+        gui.avatar.vx = GuiApp::WALK_SPEED;
+        gui.avatar.facing = Direction::Right;
+        gui.update_physics(0.1, 1280.0, 720.0, 2000.0);
+        assert!(
+            gui.avatar.x > 100.0,
+            "D walking must advance avatar x position"
+        );
+        assert_eq!(
+            gui.modal, None,
+            "Walking right must never trigger demolition modal"
+        );
     }
 }

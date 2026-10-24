@@ -159,11 +159,7 @@ pub async fn run_gui(app: App) {
                 move_dir -= 1.0;
                 gui.avatar.facing = Direction::Left;
             }
-            if is_key_down(KeyCode::Right)
-                || (is_key_down(KeyCode::D)
-                    && !is_key_down(KeyCode::LeftControl)
-                    && !is_key_down(KeyCode::LeftShift))
-            {
+            if is_key_down(KeyCode::Right) || is_key_down(KeyCode::D) {
                 move_dir += 1.0;
                 gui.avatar.facing = Direction::Right;
             }
@@ -277,18 +273,32 @@ pub async fn run_gui(app: App) {
                     gui.banner_message = Some((msg, is_err, 3.5));
                 }
             }
-            // Demolition trigger
-            let trigger_demolish = is_key_pressed(KeyCode::Delete)
-                || ((is_key_pressed(KeyCode::D) || is_key_pressed(KeyCode::Delete))
-                    && (is_key_down(KeyCode::LeftControl)
-                        || is_key_down(KeyCode::LeftShift)
-                        || is_key_pressed(KeyCode::Delete)));
-
+            // Demolition trigger (X or Delete)
+            let trigger_demolish = is_key_pressed(KeyCode::X) || is_key_pressed(KeyCode::Delete);
             if trigger_demolish {
                 if let Some(child) = gui.app.current_selected_child() {
                     if child.is_system_protected {
-                        let warn = gui.app.language.protected_rejection_notice().to_string();
-                        gui.banner_message = Some((warn, true, 3.5));
+                        let warn = if gui.app.is_in_scrapyard() {
+                            if child.name.to_lowercase().contains("snap") {
+                                if gui.app.language == Language::Vi {
+                                    "Yêu cầu quyền sudo: Hãy chạy 'sudo snap remove <pkg> --revision <rev>' trong terminal.".to_string()
+                                } else {
+                                    "Sudo required: Run 'sudo snap remove <pkg> --revision <rev>' in terminal.".to_string()
+                                }
+                            } else if child.name.to_lowercase().contains("apt") {
+                                if gui.app.language == Language::Vi {
+                                    "Yêu cầu quyền sudo: Hãy chạy 'sudo apt-get clean' trong terminal.".to_string()
+                                } else {
+                                    "Sudo required: Run 'sudo apt-get clean' in terminal."
+                                        .to_string()
+                                }
+                            } else {
+                                gui.app.language.protected_rejection_notice().to_string()
+                            }
+                        } else {
+                            gui.app.language.protected_rejection_notice().to_string()
+                        };
+                        gui.banner_message = Some((warn, true, 4.0));
                     } else {
                         gui.modal = Some(GuiDemolishModal {
                             target_index: gui.app.nav.selected_index,

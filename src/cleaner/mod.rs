@@ -9,6 +9,8 @@ pub enum PurgeAction {
     DirectoryDelete(PathBuf),
     /// Remove inactive snap revisions (name, revision)
     SnapRevisions(Vec<(String, String)>),
+    /// Remove user-owned temporary files in /tmp
+    TmpUserDebris(Vec<PathBuf>),
 }
 
 impl PurgeAction {
@@ -56,6 +58,40 @@ impl PurgeAction {
                     Err(errors.join("; "))
                 }
             }
+            PurgeAction::TmpUserDebris(paths) => {
+                for p in paths {
+                    if p.is_dir() {
+                        let _ = std::fs::remove_dir_all(p);
+                    } else if p.is_file() || p.is_symlink() {
+                        let _ = std::fs::remove_file(p);
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
+
+    pub fn requires_sudo(&self) -> bool {
+        match self {
+            PurgeAction::Command(cmd, _) => cmd == "apt-get" || cmd == "apt",
+            PurgeAction::SnapRevisions(_) => true,
+            PurgeAction::DirectoryDelete(_) | PurgeAction::TmpUserDebris(_) => false,
+        }
+    }
+
+    pub fn manual_guidance(&self) -> Option<String> {
+        match self {
+            PurgeAction::SnapRevisions(revisions) => {
+                if let Some((name, rev)) = revisions.first() {
+                    Some(format!("sudo snap remove {} --revision {}", name, rev))
+                } else {
+                    Some("sudo snap remove <pkg> --revision <rev>".to_string())
+                }
+            }
+            PurgeAction::Command(cmd, args) if cmd == "apt-get" || cmd == "apt" => {
+                Some(format!("sudo {} {}", cmd, args.join(" ")))
+            }
+            _ => None,
         }
     }
 }
@@ -216,7 +252,10 @@ pub fn probe_snap() -> Option<CleanableTarget> {
             id: "snap".into(),
             name: "Snap Inactive Revisions".into(),
             size: total_size,
-            description: format!("{} old disabled package revisions", count),
+            description: format!(
+                "{} old disabled revisions (Manual: sudo snap remove <pkg> --revision <rev>)",
+                count
+            ),
             purge_action: PurgeAction::SnapRevisions(disabled_revisions),
             requires_sudo: true,
         })
@@ -254,7 +293,7 @@ pub fn probe_package_caches() -> Vec<CleanableTarget> {
     let pip_cache = home.join(".cache/pip");
     if pip_cache.is_dir() {
         let size = calculate_dir_size(&pip_cache);
-        if size > 5 * 1024 * 1024 {
+        if size > 1024 * 1024 {
             targets.push(CleanableTarget {
                 id: "pip".into(),
                 name: "Python Pip Cache".into(),
@@ -344,13 +383,113 @@ pub fn probe_apt_archives() -> Option<CleanableTarget> {
                 id: "apt".into(),
                 name: "Apt Package Archives".into(),
                 size,
-                description: "Cached .deb installer archives in /var/cache/apt".into(),
+                description:
+                    "Cached .deb installer archives in /var/cache/apt (Manual: sudo apt-get clean)"
+                        .into(),
                 purge_action: PurgeAction::Command("apt-get".into(), vec!["clean".into()]),
                 requires_sudo: true,
             });
         }
     }
     None
+}
+
+/// Probe uv Python runtimes and tool environments in ~/.local/share/uv
+pub fn probe_uv_data() -> Option<CleanableTarget> {
+    let home = match std::env::var("HOME") {
+        Ok(h) => PathBuf::from(h),
+        Err(_) => return None,
+    };
+    let uv_dir = home.join(".local/share/uv");
+    if uv_dir.is_dir() {
+        let size = calculate_dir_size(&uv_dir);
+        if size > 20 * 1024 * 1024 {
+            return Some(CleanableTarget {
+                id: "uv-data".into(),
+                name: "Python uv Tool & Python Runtimes".into(),
+                size,
+                description: "Cached tools and Python standalone builds in ~/.local/share/uv"
+                    .into(),
+                purge_action: PurgeAction::DirectoryDelete(uv_dir),
+                requires_sudo: false,
+            });
+        }
+    }
+    None
+}
+
+/// Probe user-owned temporary files in /tmp exceeding 50 MB
+pub fn probe_tmp_directory() -> Option<CleanableTarget> {
+    let tmp_path = Path::new("/tmp");
+    if !tmp_path.is_dir() {
+        return None;
+    }
+
+    #[cfg(unix)]
+    let my_uid = {
+        use std::os::unix::fs::MetadataExt;
+        if let Ok(home) = std::env::var("HOME") {
+            std::fs::metadata(home).map(|m| m.uid()).ok()
+        } else {
+            None
+        }
+    };
+
+    let mut user_paths = Vec::new();
+    let mut total_size = 0u64;
+
+    if let Ok(entries) = std::fs::read_dir(tmp_path) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::MetadataExt;
+                if let Some(uid) = my_uid {
+                    if let Ok(meta) = entry.metadata() {
+                        if meta.uid() != uid {
+                            continue;
+                        }
+                    } else {
+                        continue;
+                    }
+                }
+            }
+
+            let file_name = entry.file_name();
+            let name_str = file_name.to_string_lossy();
+            if name_str.starts_with(".X11-unix")
+                || name_str.starts_with(".ICE-unix")
+                || name_str.starts_with(".Test-unix")
+            {
+                continue;
+            }
+
+            let size = if path.is_dir() {
+                calculate_dir_size(&path)
+            } else {
+                entry.metadata().map(|m| m.len()).unwrap_or(0)
+            };
+
+            if size > 0 {
+                total_size = total_size.saturating_add(size);
+                user_paths.push(path);
+            }
+        }
+    }
+
+    if total_size > 50 * 1024 * 1024 {
+        Some(CleanableTarget {
+            id: "tmp".into(),
+            name: "User Temporary Debris (/tmp)".into(),
+            size: total_size,
+            description: "User-owned temporary files and build artifacts in /tmp".into(),
+            purge_action: PurgeAction::TmpUserDebris(user_paths),
+            requires_sudo: false,
+        })
+    } else {
+        None
+    }
 }
 
 /// Main survey orchestrator gathering all available cleanable junk
@@ -364,6 +503,12 @@ pub fn survey_all_system_junk() -> Vec<CleanableTarget> {
         targets.push(snap);
     }
     targets.extend(probe_package_caches());
+    if let Some(uv) = probe_uv_data() {
+        targets.push(uv);
+    }
+    if let Some(tmp) = probe_tmp_directory() {
+        targets.push(tmp);
+    }
     if let Some(apt) = probe_apt_archives() {
         targets.push(apt);
     }
@@ -418,5 +563,52 @@ mod tests {
             assert!(!t.name.is_empty());
             assert!(t.size > 0);
         }
+    }
+
+    #[test]
+    fn test_purge_action_requires_sudo_and_guidance() {
+        let snap = PurgeAction::SnapRevisions(vec![("discord".into(), "123".into())]);
+        assert!(snap.requires_sudo());
+        assert_eq!(
+            snap.manual_guidance(),
+            Some("sudo snap remove discord --revision 123".to_string())
+        );
+
+        let apt = PurgeAction::Command("apt-get".into(), vec!["clean".into()]);
+        assert!(apt.requires_sudo());
+        assert_eq!(
+            apt.manual_guidance(),
+            Some("sudo apt-get clean".to_string())
+        );
+
+        let dir = PurgeAction::DirectoryDelete(PathBuf::from("/tmp"));
+        assert!(!dir.requires_sudo());
+        assert_eq!(dir.manual_guidance(), None);
+
+        let tmp_debris = PurgeAction::TmpUserDebris(vec![]);
+        assert!(!tmp_debris.requires_sudo());
+        assert_eq!(tmp_debris.manual_guidance(), None);
+    }
+
+    #[test]
+    fn test_purge_action_tmp_user_debris() {
+        let temp_dir = std::env::temp_dir().join("test_tmp_user_debris_dir");
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let sample_file = temp_dir.join("subfile.txt");
+        let _ = std::fs::write(&sample_file, b"sample");
+        assert!(sample_file.exists());
+
+        let action = PurgeAction::TmpUserDebris(vec![temp_dir.clone()]);
+        assert!(action.execute().is_ok());
+        assert!(!sample_file.exists());
+        assert!(!temp_dir.exists());
+    }
+
+    #[test]
+    fn test_probes_extended_resilience() {
+        // UV probe should never panic
+        let _ = probe_uv_data();
+        // Tmp probe should never panic
+        let _ = probe_tmp_directory();
     }
 }

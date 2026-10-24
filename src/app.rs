@@ -1,4 +1,5 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use std::path::PathBuf;
 
 use crate::demolish::{execute_demolition, DemolishAction, DemolishState};
 use crate::model::{BuildingNode, NavigationState};
@@ -136,12 +137,21 @@ impl App {
     }
 
     pub fn is_in_scrapyard(&self) -> bool {
-        self.saved_root_node.is_some()
+        self.saved_root_node.is_some() || self.root_node.name.contains("SCRAPYARD")
     }
 
     pub fn toggle_scrapyard(&mut self) -> bool {
         if let Some(prev_root) = self.saved_root_node.take() {
             self.root_node = prev_root;
+            self.nav = NavigationState::new();
+            self.status_message = Some((self.language.scrapyard_exited().to_string(), false));
+            false
+        } else if self.root_node.name.contains("SCRAPYARD") {
+            let options = self.scanner_options;
+            let target_path = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            if let Ok(fs_root) = scan_directory(&target_path, &options) {
+                self.root_node = fs_root;
+            }
             self.nav = NavigationState::new();
             self.status_message = Some((self.language.scrapyard_exited().to_string(), false));
             false
@@ -388,11 +398,34 @@ impl App {
             KeyCode::Char('r') | KeyCode::F(5) => {
                 let _ = self.rescan_current();
             }
-            KeyCode::Char('d') | KeyCode::Delete => {
+            KeyCode::Char('x')
+            | KeyCode::Char('X')
+            | KeyCode::Char('d')
+            | KeyCode::Char('D')
+            | KeyCode::Delete => {
                 if let Some(child) = self.current_selected_child() {
                     if child.is_system_protected {
-                        self.status_message =
-                            Some((self.language.protected_rejection_notice().into(), true));
+                        let notice = if self.is_in_scrapyard() {
+                            if child.name.to_lowercase().contains("snap") {
+                                if self.language == crate::i18n::Language::Vi {
+                                    "Yêu cầu quyền sudo: Hãy chạy lệnh 'sudo snap remove <pkg> --revision <rev>' trong terminal.".to_string()
+                                } else {
+                                    "Sudo required: Run 'sudo snap remove <pkg> --revision <rev>' in terminal.".to_string()
+                                }
+                            } else if child.name.to_lowercase().contains("apt") {
+                                if self.language == crate::i18n::Language::Vi {
+                                    "Yêu cầu quyền sudo: Hãy chạy lệnh 'sudo apt-get clean' trong terminal.".to_string()
+                                } else {
+                                    "Sudo required: Run 'sudo apt-get clean' in terminal."
+                                        .to_string()
+                                }
+                            } else {
+                                self.language.protected_rejection_notice().to_string()
+                            }
+                        } else {
+                            self.language.protected_rejection_notice().to_string()
+                        };
+                        self.status_message = Some((notice, true));
                     } else {
                         self.demolish_state = Some(DemolishState::new(child));
                     }
@@ -709,5 +742,85 @@ mod tests {
         assert!(app.navigate_up());
         assert!(!app.is_in_scrapyard());
         assert_eq!(app.root_node.name, "root");
+    }
+
+    #[test]
+    fn test_x_key_demolition_trigger() {
+        let child = BuildingNode::new(
+            "junk.tmp".into(),
+            PathBuf::from("/tmp/junk.tmp"),
+            false,
+            false,
+            1024,
+            vec![],
+        );
+        let root = BuildingNode::new(
+            "root".into(),
+            PathBuf::from("/"),
+            true,
+            false,
+            1024,
+            vec![child],
+        );
+        let mut app = App::new(root, ScannerOptions::default());
+
+        let key_x = KeyEvent {
+            code: KeyCode::Char('x'),
+            modifiers: KeyModifiers::NONE,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        };
+        app.handle_key(key_x);
+        assert!(
+            app.demolish_state.is_some(),
+            "Pressing 'x' must open demolition state"
+        );
+    }
+
+    #[test]
+    fn test_scrapyard_sudo_rejection_notice() {
+        let mut protected_snap = BuildingNode::new(
+            "Snap Inactive Revisions".into(),
+            PathBuf::from("//scrapyard/snap"),
+            false,
+            false,
+            5000,
+            vec![],
+        );
+        protected_snap.is_system_protected = true;
+
+        let root = BuildingNode::new(
+            "ĐẠI LỘ PHẾ LIỆU (SCRAPYARD)".into(),
+            PathBuf::from("//scrapyard"),
+            true,
+            false,
+            5000,
+            vec![protected_snap],
+        );
+        let mut app = App::new(root, ScannerOptions::default());
+        app.saved_root_node = Some(BuildingNode::new(
+            "root".into(),
+            PathBuf::from("/"),
+            true,
+            false,
+            0,
+            vec![],
+        ));
+
+        let key_x = KeyEvent {
+            code: KeyCode::Char('x'),
+            modifiers: KeyModifiers::NONE,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        };
+        app.handle_key(key_x);
+        assert!(app.demolish_state.is_none());
+        assert!(app.status_message.is_some());
+        let msg = app.status_message.unwrap().0;
+        assert!(
+            msg.contains("sudo snap remove"),
+            "Notice must contain exact terminal command: {}",
+            msg
+        );
     }
 }

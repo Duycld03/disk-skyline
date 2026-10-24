@@ -126,6 +126,20 @@ pub fn execute_bulldozer_purge(parent_node: &mut BuildingNode) -> Result<u64, st
     let mut total_freed = 0u64;
     let mut i = 0;
     while i < parent_node.children.len() {
+        let is_protected = parent_node.children[i].is_system_protected;
+        let requires_sudo = parent_node.children[i]
+            .purge_action
+            .as_ref()
+            .map(|a| a.requires_sudo())
+            .unwrap_or(false);
+
+        // Sudo Safety Guard: Bulldozer only purges user-level targets without triggering PolicyKit prompts.
+        // Targets requiring sudo (e.g. Snap, APT) are preserved on the avenue for explicit manual action.
+        if is_protected || requires_sudo {
+            i += 1;
+            continue;
+        }
+
         if let Some(action) = parent_node.children[i].purge_action.clone() {
             match action.execute() {
                 Ok(()) => {
@@ -133,7 +147,7 @@ pub fn execute_bulldozer_purge(parent_node: &mut BuildingNode) -> Result<u64, st
                     total_freed = total_freed.saturating_add(removed.size);
                 }
                 Err(_) => {
-                    // Retain target in avenue if purge failed (e.g. sudo required or daemon down)
+                    // Retain target in avenue if purge failed
                     i += 1;
                 }
             }
@@ -449,6 +463,63 @@ mod tests {
         assert_eq!(freed, 3000);
         assert!(parent.children.is_empty());
         assert_eq!(parent.size, 0);
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_execute_bulldozer_purge_skips_sudo_targets() {
+        let temp_dir = std::env::temp_dir().join("test_bulldozer_sudo_skip_dir");
+        let _ = std::fs::create_dir_all(&temp_dir);
+
+        let mut user_child = BuildingNode::new(
+            "UserCache".into(),
+            temp_dir.clone(),
+            true,
+            false,
+            2000,
+            vec![],
+        );
+        user_child.purge_action = Some(crate::cleaner::PurgeAction::DirectoryDelete(
+            temp_dir.clone(),
+        ));
+        user_child.is_system_protected = false;
+
+        let mut sudo_child = BuildingNode::new(
+            "SnapRevisions".into(),
+            PathBuf::from("//scrapyard/snap"),
+            false,
+            false,
+            5000,
+            vec![],
+        );
+        sudo_child.purge_action = Some(crate::cleaner::PurgeAction::SnapRevisions(vec![(
+            "demo".into(),
+            "99".into(),
+        )]));
+        sudo_child.is_system_protected = true;
+
+        let mut parent = BuildingNode::new(
+            "Scrapyard Avenue".into(),
+            PathBuf::from("//scrapyard"),
+            true,
+            false,
+            7000,
+            vec![user_child, sudo_child],
+        );
+
+        let freed = execute_bulldozer_purge(&mut parent).unwrap();
+        assert_eq!(freed, 2000, "Bulldozer must only free user-level targets");
+        assert_eq!(
+            parent.children.len(),
+            1,
+            "Sudo-required target must remain on the avenue"
+        );
+        assert_eq!(parent.children[0].name, "SnapRevisions");
+        assert_eq!(
+            parent.size, 5000,
+            "Parent size must reflect remaining sudo target"
+        );
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

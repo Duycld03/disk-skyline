@@ -31,6 +31,7 @@ pub fn is_virtual_pseudo_fs(path: &Path) -> bool {
     false
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct ScannerOptions {
     pub max_depth: usize,
     pub sort_mode: SortMode,

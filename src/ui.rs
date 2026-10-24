@@ -319,7 +319,7 @@ fn render_hud(app: &App, area: Rect, frame: &mut Frame) {
 
     if is_protected {
         key_spans.push(Span::styled(
-            "[d/Del]",
+            "[x/Del]",
             Style::default().fg(Color::DarkGray),
         ));
         key_spans.push(Span::styled(
@@ -327,7 +327,7 @@ fn render_hud(app: &App, area: Rect, frame: &mut Frame) {
             Style::default().fg(Color::DarkGray),
         ));
     } else {
-        key_spans.push(Span::styled("[d/Del]", Style::default().fg(Color::Red)));
+        key_spans.push(Span::styled("[x/Del]", Style::default().fg(Color::Red)));
         key_spans.push(Span::raw(format!(" {}  ", lang.nav_demolish())));
     }
 

@@ -195,7 +195,25 @@ pub fn render_rpg_hud(
         }
 
         if node.is_system_protected {
-            let lock_notice = if lang == Language::Vi {
+            let lock_notice = if app.is_in_scrapyard() {
+                if node.name.to_lowercase().contains("snap") {
+                    if lang == Language::Vi {
+                        "[YÊU CẦU SUDO - Chạy trong terminal: sudo snap remove <pkg> --revision <rev>]"
+                    } else {
+                        "[SUDO REQUIRED - Run in terminal: sudo snap remove <pkg> --revision <rev>]"
+                    }
+                } else if node.name.to_lowercase().contains("apt") {
+                    if lang == Language::Vi {
+                        "[YÊU CẦU SUDO - Chạy trong terminal: sudo apt-get clean]"
+                    } else {
+                        "[SUDO REQUIRED - Run in terminal: sudo apt-get clean]"
+                    }
+                } else if lang == Language::Vi {
+                    "[YÊU CẦU SUDO - Khóa bảo vệ hệ thống]"
+                } else {
+                    "[SUDO REQUIRED - System Protected Lock]"
+                }
+            } else if lang == Language::Vi {
                 "[KHÓA BẢO VỆ HỆ THỐNG - KHÔNG THỂ PHÁ DỠ]"
             } else {
                 "[SYSTEM PROTECTED LOCK - DEMOLITION FORBIDDEN]"
@@ -221,14 +239,14 @@ pub fn render_rpg_hud(
     // Key command bar hints
     let hotkeys = if app.is_in_scrapyard() {
         if lang == Language::Vi {
-            "[A/D] Đi bộ  [W/Space] Nhảy  [D] Phá dỡ phế liệu  [C] Xe ủi Dọn Tất Cả  [Esc] Quay lại phố"
+            "[A/D] Đi bộ  [W/Space] Nhảy  [X] Phá dỡ phế liệu  [C] Xe ủi Dọn Tất Cả  [Esc] Quay lại phố"
         } else {
-            "[A/D] Walk  [W/Space] Jump  [D] Demolish Scrap  [C] Bulldozer Clean All  [Esc] Back to Files"
+            "[A/D] Walk  [W/Space] Jump  [X] Demolish Scrap  [C] Bulldozer Clean All  [Esc] Back to Files"
         }
     } else if lang == Language::Vi {
-        "[A/D/Left/Right] Đi bộ  [Space] Nhảy  [Enter] Vào  [o] Mở  [/] Tìm  [J] Phế liệu  [Esc] Lùi  [Tab] Sắp xếp  [D] Phá dỡ  [F11] Fullscreen  [Q] Thoát"
+        "[A/D/Left/Right] Đi bộ  [Space] Nhảy  [Enter] Vào  [o] Mở  [/] Tìm  [J] Phế liệu  [Esc] Lùi  [Tab] Sắp xếp  [X] Phá dỡ  [F11] Fullscreen  [Q] Thoát"
     } else {
-        "[A/D/Left/Right] Walk  [Space] Jump  [Enter] Enter  [o] Open  [/] Search  [J] Scrapyard  [Esc] Back  [Tab] Sort  [D] Demolish  [F11] Fullscreen  [Q] Quit"
+        "[A/D/Left/Right] Walk  [Space] Jump  [Enter] Enter  [o] Open  [/] Search  [J] Scrapyard  [Esc] Back  [Tab] Sort  [X] Demolish  [F11] Fullscreen  [Q] Quit"
     };
     draw_text_f(
         hotkeys,
