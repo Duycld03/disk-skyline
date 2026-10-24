@@ -70,3 +70,47 @@ The 2D GUI SHALL display persistent identifying markers for every visible buildi
 #### Scenario: Visual styling of building signs
 - **WHEN** a building is rendered in the 2D game window
 - **THEN** its upper facade sign is drawn with high-contrast text matching the building's category color theme, and its street nameplate is positioned cleanly below the building base
+
+### Requirement: Street Radar Minimap Bar
+The 2D GUI SHALL render a compact horizontal street radar bar below the top header that displays a scaled height profile of all buildings on the current street and marks the avatar's real-time position.
+
+#### Scenario: Visualizing street layout on radar
+- **WHEN** the user explores an avenue with varying building heights
+- **THEN** the radar bar displays proportional height ticks for each building and a prominent cursor indicator at the avatar's relative coordinate
+
+### Requirement: Spotlight Search Overlay and Camera Jump
+The 2D GUI SHALL display an interactive search input overlay when `/` is pressed, dynamically matching filenames and smoothly panning the camera and avatar to the matched building.
+
+#### Scenario: Dynamic camera pan during search
+- **WHEN** the user types characters into the search bar
+- **THEN** the camera and avatar smoothly animate to focus on the first matching building along the avenue
+
+### Requirement: Building Staleness Visual Aesthetics
+The 2D GUI SHALL visually differentiate stale structures (older than 180 days) from active structures by dimming facade and window lighting and displaying an `[OLD]` badge.
+
+#### Scenario: Visual rendering of stale structures
+- **WHEN** a building's file has not been modified for more than 180 days
+- **THEN** its window brightness is reduced and an `[OLD]` indicator is drawn on its facade
+
+### Requirement: Virtual Scrapyard Avenue Skyline Rendering
+The 2D GUI SHALL support rendering a dedicated "Virtual Scrapyard Avenue" (Đại Lộ Phế Liệu) representing surveyed system junk items as explorable skyline buildings.
+Each junk category SHALL be rendered with industrial polluted aesthetic styling, logarithmic vertical heights corresponding to reclaimable bytes, and neon signboards displaying category badges (`[SCRAP]`, `[DOCKER]`, `[SNAP]`, `[CACHE]`).
+
+#### Scenario: Entering the Scrapyard Avenue
+- **WHEN** the user presses `[J]` during GUI exploration
+- **THEN** the active avenue transitions to the virtual Scrapyard Street displaying all detected junk buildings, and the avatar is placed at the entrance
+
+#### Scenario: Exiting the Scrapyard Avenue
+- **WHEN** the user presses `[Esc]` or `[Backspace]` while on the Scrapyard Avenue
+- **THEN** the camera and avatar transition back to the previous filesystem directory street
+
+### Requirement: Scrapyard Demolition and Bulldozer Effects
+The 2D GUI SHALL support both single-building demolition (`[D]`) and all-building batch demolition (`[C]`). Demolishing a junk building SHALL trigger particle debris collapse animations, remove the building from the street, and emit a localized status banner indicating the reclaimed gigabytes.
+
+#### Scenario: Demolishing a single junk building
+- **WHEN** the user presses `[D]` in front of a junk building and confirms `[Y]`
+- **THEN** the building collapses into particle explosion debris, the underlying cleanup command is executed, and the building is pruned from the street
+
+#### Scenario: Triggering bulldozer batch wipe
+- **WHEN** the user triggers batch cleanup via `[C]` and confirms the prompt
+- **THEN** all junk buildings trigger chain explosion particle animations sequentially, and the street clears to an empty avenue with a consolidated success banner

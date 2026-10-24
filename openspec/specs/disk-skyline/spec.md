@@ -74,3 +74,43 @@ The system SHALL allow the user to trigger a manual filesystem rescan by pressin
 #### Scenario: Triggering manual rescan
 - **WHEN** the user presses `r` during navigation
 - **THEN** the system re-scans the active subtree from disk, synchronizes the in-memory tree, and updates the viewport
+
+### Requirement: External File Launching
+The system SHALL allow users to open the currently selected file or directory in the host operating system's default application by pressing `o`. The launch SHALL execute asynchronously without freezing or blocking application input.
+
+#### Scenario: Opening file with default viewer
+- **WHEN** the user selects a file building and presses `o`
+- **THEN** the system launches the file with the OS default viewer and displays a non-error status notification
+
+#### Scenario: Opening protected directory
+- **WHEN** the user selects a directory and presses `o`
+- **THEN** the system opens the directory in the default system file manager
+
+### Requirement: Spotlight Search Navigation
+The system SHALL provide an interactive search mode triggered by `/` that filters buildings by name substring or fuzzy matching, instantly moving selection to the best matching building.
+
+#### Scenario: Searching and jumping to building
+- **WHEN** the user presses `/` and types a query
+- **THEN** the system updates candidate matches in real-time and jumps the selected index to the top candidate
+
+#### Scenario: Cancelling search
+- **WHEN** the user presses `Esc` while search mode is active
+- **THEN** search input closes and original selection is preserved
+
+### Requirement: File Modification Time Tracking
+The directory scanner SHALL record file modification timestamps for each scanned node, categorizing items older than 180 days as stale.
+
+#### Scenario: Scanning file with modification timestamp
+- **WHEN** the scanner inspects a filesystem path
+- **THEN** it records the file modification time in seconds or days elapsed
+
+### Requirement: Scrapyard CLI Flag and TUI Mode Transition
+The system SHALL support launching directly into the Scrapyard survey via the `--scrapyard` CLI flag, and dynamically toggling between normal directory survey and the virtual Scrapyard Street in the terminal TUI via the `[J]` key.
+
+#### Scenario: Launching with --scrapyard argument
+- **WHEN** the user executes `disk-skyline --scrapyard`
+- **THEN** the system bypasses filesystem traversal, scans system junk categories, and displays the ASCII Scrapyard Skyline in the terminal
+
+#### Scenario: Toggling Scrapyard mode in TUI
+- **WHEN** the user presses `[J]` during active TUI exploration
+- **THEN** the TUI replaces the active avenue with the Scrapyard Avenue, updating HUD prompts to reflect `[D] Demolish Target` and `[C] Clean All`
