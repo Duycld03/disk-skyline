@@ -460,9 +460,9 @@ pub fn render_rpg_hud(
     );
 
     let lang_hint = if lang == Language::Vi {
-        "[L] Đổi sang English".to_string()
+        "[L] Doi sang English".to_string()
     } else {
-        "[L] Switch to Tiếng Việt".to_string()
+        "[L] Switch to Vietnamese".to_string()
     };
     draw_text(
         &lang_hint,
@@ -566,20 +566,19 @@ pub fn render_rpg_hud(
             );
         }
     } else {
-        draw_text(
-            "Đang đứng trên đường trống...",
-            24.0,
-            card_y + 36.0,
-            16.0,
-            GRAY,
-        );
+        let empty_msg = if lang == Language::Vi {
+            "Đang đứng trên đường trống..."
+        } else {
+            "Standing on open street..."
+        };
+        draw_text(empty_msg, 24.0, card_y + 36.0, 16.0, GRAY);
     }
 
     // Key command bar hints
     let hotkeys = if lang == Language::Vi {
-        "[A/D/←/→] Đi bộ  [Space] Nhảy  [Enter] Vào  [Esc/Backspace] Lùi  [Tab] Sắp xếp  [D] Phá dỡ  [F11] Toàn màn hình  [Q] Thoát"
+        "[A/D/Left/Right] Đi bộ  [Space] Nhảy  [Enter] Vào  [Esc/Backspace] Lùi  [Tab] Sắp xếp  [D] Phá dỡ  [F11] Fullscreen  [Q] Thoát"
     } else {
-        "[A/D/←/→] Walk  [Space] Jump  [Enter] Enter  [Esc/Backspace] Back  [Tab] Sort  [D] Demolish  [F11] Fullscreen  [Q] Quit"
+        "[A/D/Left/Right] Walk  [Space] Jump  [Enter] Enter  [Esc/Backspace] Back  [Tab] Sort  [D] Demolish  [F11] Fullscreen  [Q] Quit"
     };
     draw_text(
         hotkeys,
