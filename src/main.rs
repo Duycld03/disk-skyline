@@ -37,6 +37,10 @@ pub struct Cli {
     /// Interface language / Ngôn ngữ hiển thị (vi | en)
     #[arg(short, long, value_enum)]
     pub lang: Option<disk_skyline::i18n::Language>,
+
+    /// Launch directly into the System Scrapyard survey (Đại Lộ Phế Liệu)
+    #[arg(short = 's', long)]
+    pub scrapyard: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -66,11 +70,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sort_mode: model::SortMode::SizeDesc,
     };
 
-    let root_node = match scan_directory(&canonical_path, &options) {
-        Ok(node) => node,
-        Err(e) => {
-            eprintln!("\n[!] Không thể quét thư mục: {}", e);
-            std::process::exit(1);
+    let root_node = if cli.scrapyard {
+        let targets = disk_skyline::cleaner::survey_all_system_junk();
+        model::BuildingNode::build_scrapyard_avenue(&targets)
+    } else {
+        match scan_directory(&canonical_path, &options) {
+            Ok(node) => node,
+            Err(e) => {
+                eprintln!("\n[!] Không thể quét thư mục: {}", e);
+                std::process::exit(1);
+            }
         }
     };
 

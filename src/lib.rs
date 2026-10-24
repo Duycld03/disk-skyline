@@ -1,4 +1,5 @@
 pub mod app;
+pub mod cleaner;
 pub mod demolish;
 pub mod gui;
 pub mod i18n;

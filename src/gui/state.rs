@@ -353,6 +353,7 @@ mod tests {
             file_type: BuildingCategory::Code,
             children: vec![],
             modified_secs_ago: None,
+            purge_action: None,
         };
         let child2 = BuildingNode {
             name: "assets".into(),
@@ -364,6 +365,7 @@ mod tests {
             file_type: BuildingCategory::Directory,
             children: vec![],
             modified_secs_ago: None,
+            purge_action: None,
         };
         let root = BuildingNode {
             name: "root".into(),
@@ -375,6 +377,7 @@ mod tests {
             file_type: BuildingCategory::Directory,
             children: vec![child1, child2],
             modified_secs_ago: None,
+            purge_action: None,
         };
 
         let app = App::new(

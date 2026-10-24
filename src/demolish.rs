@@ -93,15 +93,22 @@ pub fn execute_demolition(
     parent_node: &mut BuildingNode,
     selected_index: usize,
 ) -> Result<u64, std::io::Error> {
-    // 1. Filesystem operation
-    if state.target_path.exists() {
+    // 1. Filesystem operation or PurgeAction execution
+    let custom_purge = if selected_index < parent_node.children.len() {
+        parent_node.children[selected_index].purge_action.clone()
+    } else {
+        None
+    };
+
+    if let Some(action) = custom_purge {
+        action.execute().map_err(std::io::Error::other)?;
+    } else if state.target_path.exists() {
         if state.is_dir {
             fs::remove_dir_all(&state.target_path)?;
         } else {
             fs::remove_file(&state.target_path)?;
         }
     }
-
     // 2. Direct In-Memory mutation
     let freed_bytes = if selected_index < parent_node.children.len() {
         let removed = parent_node.children.remove(selected_index);
@@ -112,6 +119,23 @@ pub fn execute_demolition(
     };
 
     Ok(freed_bytes)
+}
+
+/// Executes sequential bulldozer purge across all cleanable targets in the Scrapyard Avenue
+pub fn execute_bulldozer_purge(parent_node: &mut BuildingNode) -> Result<u64, std::io::Error> {
+    let mut total_freed = 0u64;
+    let mut i = 0;
+    while i < parent_node.children.len() {
+        if let Some(action) = parent_node.children[i].purge_action.clone() {
+            let _ = action.execute();
+            let removed = parent_node.children.remove(i);
+            total_freed = total_freed.saturating_add(removed.size);
+        } else {
+            i += 1;
+        }
+    }
+    parent_node.size = parent_node.size.saturating_sub(total_freed);
+    Ok(total_freed)
 }
 
 /// Renders modal overlay for demolition confirmation
@@ -352,5 +376,73 @@ mod tests {
         assert_eq!(parent.children.len(), 1);
         assert_eq!(parent.children[0].name, "f2.txt");
         assert_eq!(parent.size, 1000);
+    }
+
+    #[test]
+    fn test_demolish_with_purge_action() {
+        let temp_dir = std::env::temp_dir().join("test_purge_demolish_node");
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let sample = temp_dir.join("sample.log");
+        let _ = std::fs::write(&sample, b"junk logs");
+        assert!(sample.exists());
+
+        let mut child = BuildingNode::new(
+            "Junk Target".into(),
+            temp_dir.clone(),
+            true,
+            false,
+            5000,
+            vec![],
+        );
+        child.purge_action = Some(crate::cleaner::PurgeAction::DirectoryDelete(
+            temp_dir.clone(),
+        ));
+
+        let mut parent = BuildingNode::new(
+            "Avenue".into(),
+            PathBuf::from("/avenue"),
+            true,
+            false,
+            5000,
+            vec![child],
+        );
+
+        let state = DemolishState::new(&parent.children[0]);
+        let res = execute_demolition(&state, &mut parent, 0);
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap(), 5000);
+        assert!(parent.children.is_empty());
+        assert_eq!(parent.size, 0);
+        assert!(!sample.exists());
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_execute_bulldozer_purge() {
+        let temp_dir = std::env::temp_dir().join("test_bulldozer_purge_dir");
+        let _ = std::fs::create_dir_all(&temp_dir);
+
+        let mut child1 =
+            BuildingNode::new("Scrap1".into(), temp_dir.clone(), true, false, 3000, vec![]);
+        child1.purge_action = Some(crate::cleaner::PurgeAction::DirectoryDelete(
+            temp_dir.clone(),
+        ));
+
+        let mut parent = BuildingNode::new(
+            "Scrapyard Avenue".into(),
+            PathBuf::from("//scrapyard"),
+            true,
+            false,
+            3000,
+            vec![child1],
+        );
+
+        let freed = execute_bulldozer_purge(&mut parent).unwrap();
+        assert_eq!(freed, 3000);
+        assert!(parent.children.is_empty());
+        assert_eq!(parent.size, 0);
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

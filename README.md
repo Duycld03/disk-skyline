@@ -75,7 +75,14 @@ Path: /home/user/workspace/disk-skyline/src/model.rs | Scale: 1 stories (items)
   - Safely delete items directly from within the TUI.
   - Reclaims disk space and prunes in-memory trees without requiring a slow full rescan.
   - Two-tier safety confirmation: requires typing `YES` for files $\ge$ 1 GB or restricted bunkers.
+- 🚜 **System Scrapyard Avenue & Bulldozer Cleaner (`J` / `C` / `--scrapyard`)**:
+  - Fast non-blocking probes detect developer bloat and reclaimable junk: Docker dangling images/stopped containers/volumes (`docker system df`), disabled Snap revisions (`snap list --all`), global package caches (`npm`, `pip`, `uv`, `cargo`), and package archives (`/var/cache/apt/archives`).
+  - Visualizes reclaimable space as an industrial **"Scrapyard Avenue" (Đại Lộ Phế Liệu)** with amber rust skyline towers and `[SCRAP]` neon signboards.
+  - Target individual junk towers with `d` to execute platform-native purges, or trigger the **Bulldozer batch cleaner (`C`)** to sweep the avenue and reclaim gigabytes!
 
+<p align="center">
+  <img src="docs/images/disk-skyline-scrapyard.png" alt="Disk Skyline Scrapyard Avenue UI" width="900" />
+</p>
 
 ### 🎮 2D Desktop Game Window (`disk-skyline-gui`)
 Looking for a full gaming experience? Run `disk-skyline-gui` (or double-click `disk-skyline-gui.exe` on Windows):
@@ -126,6 +133,8 @@ cargo build --release
 | `r` / `F5` | On-demand rescan | Quét và đồng bộ lại thư mục hiện tại |
 | `o` / `O` | Open in default host app | Mở tệp/thư mục bằng ứng dụng mặc định của hệ điều hành |
 | `/` | Spotlight search | Tìm kiếm nhanh công trình trong phố |
+| `J` | **Toggle Scrapyard Avenue** | **Chuyển sang Đại Lộ Phế Liệu (Junk Cleaner)** |
+| `C` | **Bulldozer Clean All (in Scrapyard)** | **Xe ủi dọn sạch bãi phế liệu** |
 | `L` | **Toggle Language (EN $\leftrightarrow$ VI)** | **Đổi ngôn ngữ Tiếng Việt $\leftrightarrow$ English** |
 | `q` / `Ctrl+C` | Exit application | Thoát chương trình |
 
@@ -142,8 +151,8 @@ Arguments:
 Options:
   -d, --depth <DEPTH>  Maximum initial recursive scan depth [default: 6]
       --snapshot       Print a single non-interactive skyline snapshot and exit
+  -s, --scrapyard      Launch directly into the System Scrapyard survey (Đại Lộ Phế Liệu)
   -l, --lang <LANG>    Interface language / Ngôn ngữ hiển thị [possible values: vi, en]
-  -h, --help           Print help
   -V, --version        Print version
 ```
 

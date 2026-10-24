@@ -349,6 +349,30 @@ fn render_hud(app: &App, area: Rect, frame: &mut Frame) {
             "Search"
         }
     )));
+    if app.is_in_scrapyard() {
+        key_spans.push(Span::styled("[c]", Style::default().fg(Color::LightRed)));
+        key_spans.push(Span::raw(format!(
+            " {}  ",
+            if lang == crate::i18n::Language::Vi {
+                "Xe ủi Dọn Tất Cả"
+            } else {
+                "Bulldozer Clean All"
+            }
+        )));
+    } else {
+        key_spans.push(Span::styled(
+            "[J]",
+            Style::default().fg(Color::LightMagenta),
+        ));
+        key_spans.push(Span::raw(format!(
+            " {}  ",
+            if lang == crate::i18n::Language::Vi {
+                "Phế liệu"
+            } else {
+                "Scrapyard"
+            }
+        )));
+    }
     key_spans.push(Span::styled("[r]", Style::default().fg(Color::Cyan)));
     key_spans.push(Span::raw(format!(" {}  ", lang.nav_rescan())));
     key_spans.push(Span::styled("[L]", Style::default().fg(Color::Green)));

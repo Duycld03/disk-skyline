@@ -366,6 +366,38 @@ impl Language {
         }
     }
 
+    pub fn scrapyard_entered(&self) -> &'static str {
+        match self {
+            Language::Vi => {
+                "Đã chuyển sang Đại Lộ Phế Liệu Hệ Thống. [D] Phá dỡ | [C] Dọn tất cả | [Esc] Quay lại"
+            }
+            Language::En => {
+                "Switched to System Scrapyard Avenue. [D] Demolish | [C] Clean All | [Esc] Return"
+            }
+        }
+    }
+
+    pub fn scrapyard_exited(&self) -> &'static str {
+        match self {
+            Language::Vi => "Đã quay lại cây thư mục làm việc.",
+            Language::En => "Returned to working filesystem.",
+        }
+    }
+
+    pub fn bulldozer_success(&self, bytes_str: &str) -> String {
+        match self {
+            Language::Vi => {
+                format!(
+                    "Cỗ xe ủi đã dọn sạch bãi phế liệu: Giải phóng {}!",
+                    bytes_str
+                )
+            }
+            Language::En => {
+                format!("Bulldozer swept the scrapyard: Reclaimed {}!", bytes_str)
+            }
+        }
+    }
+
     // Building categories display
     pub fn category_name(&self, cat: crate::model::BuildingCategory, is_dir: bool) -> &'static str {
         if is_dir || cat == crate::model::BuildingCategory::Directory {
@@ -391,6 +423,8 @@ impl Language {
             (Language::En, crate::model::BuildingCategory::Document) => "Publishing House (Doc)",
             (Language::Vi, crate::model::BuildingCategory::Restricted) => "Khu Quân sự (Bunker)",
             (Language::En, crate::model::BuildingCategory::Restricted) => "Military Zone (Bunker)",
+            (Language::Vi, crate::model::BuildingCategory::Junk) => "Bãi phế liệu (Rác hệ thống)",
+            (Language::En, crate::model::BuildingCategory::Junk) => "Scrapyard (System Junk)",
             (Language::Vi, crate::model::BuildingCategory::Other)
             | (Language::Vi, crate::model::BuildingCategory::Directory) => "Dân cư (File khác)",
             (Language::En, crate::model::BuildingCategory::Other)

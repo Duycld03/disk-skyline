@@ -13,6 +13,7 @@ pub fn category_color(cat: BuildingCategory) -> Color {
         BuildingCategory::Binary => Color::new(0.95, 0.35, 0.20, 1.0),    // Molten Orange
         BuildingCategory::Document => Color::new(0.85, 0.88, 0.92, 1.0),  // Silver White
         BuildingCategory::Restricted => Color::new(0.90, 0.15, 0.15, 1.0), // Danger Red
+        BuildingCategory::Junk => Color::new(0.85, 0.45, 0.18, 1.0),      // Rust Amber / Scrapyard
         BuildingCategory::Other => Color::new(0.60, 0.65, 0.72, 1.0),     // Industrial Slate
     }
 }
@@ -78,17 +79,27 @@ pub fn building_category_badge(
             BuildingCategory::Binary => "[BIN]",
             BuildingCategory::Document => "[DOC]",
             BuildingCategory::Restricted => "[LOCK]",
+            BuildingCategory::Junk => "[SCRAP]",
             BuildingCategory::Directory => "[DIR]",
             BuildingCategory::Other => "[FILE]",
         }
     }
 }
 
-pub fn render_night_sky(stars: &[Star], screen_w: f32, screen_h: f32, camera_x: f32, time: f64) {
+pub fn render_night_sky(
+    stars: &[Star],
+    screen_w: f32,
+    screen_h: f32,
+    camera_x: f32,
+    time: f64,
+    is_scrapyard: bool,
+) {
     // Sky gradient background
-    clear_background(Color::new(0.04, 0.05, 0.10, 1.0)); // Deep Midnight Navy
-
-    // Distant city silhouette glow on horizon
+    if is_scrapyard {
+        clear_background(Color::new(0.08, 0.05, 0.07, 1.0)); // Industrial Smog Scrapyard
+    } else {
+        clear_background(Color::new(0.04, 0.05, 0.10, 1.0)); // Deep Midnight Navy
+    }
     let ground = GuiApp::ground_y(screen_h);
     draw_rectangle(
         0.0,
@@ -328,7 +339,24 @@ pub fn render_building(
 
     // Rooftop Antenna / Accent
     let roof_mid = screen_x + placement.width / 2.0;
-    if node.is_dir {
+    if cat == BuildingCategory::Junk {
+        // Scrapyard crane girder / hazard warning beacon
+        let crane_pulse = ((time * 10.0).sin() as f32).abs();
+        draw_line(
+            roof_mid - 6.0,
+            top_y,
+            roof_mid + 6.0,
+            top_y - 12.0,
+            2.5,
+            Color::new(0.85, 0.45, 0.18, 0.95),
+        );
+        draw_circle(
+            roof_mid + 6.0,
+            top_y - 12.0,
+            3.0,
+            Color::new(1.0, 0.65, 0.15, crane_pulse),
+        );
+    } else if node.is_dir {
         // Heliport / Signal beacon on directory towers
         draw_line(
             roof_mid,
@@ -378,7 +406,12 @@ pub fn render_building(
             sign_h,
             Color::new(0.04, 0.05, 0.08, 0.90),
         );
-        let border_c = Color::new(col.r, col.g, col.b, if is_selected { 0.95 } else { 0.65 });
+        let border_c = if cat == BuildingCategory::Junk {
+            let flick = ((time * 12.0).sin() as f32 * 0.15 + 0.85).clamp(0.6, 1.0);
+            Color::new(0.95, 0.50, 0.15, flick)
+        } else {
+            Color::new(col.r, col.g, col.b, if is_selected { 0.95 } else { 0.65 })
+        };
         draw_rectangle_lines(sign_x, sign_y, sign_w, sign_h, 1.0, border_c);
 
         let badge = if is_stale {
@@ -805,10 +838,16 @@ pub fn render_rpg_hud(
     }
 
     // Key command bar hints
-    let hotkeys = if lang == Language::Vi {
-        "[A/D/Left/Right] Đi bộ  [Space] Nhảy  [Enter] Vào  [o] Mở  [/] Tìm  [Esc/Backspace] Lùi  [Tab] Sắp xếp  [D] Phá dỡ  [F11] Fullscreen  [Q] Thoát"
+    let hotkeys = if app.is_in_scrapyard() {
+        if lang == Language::Vi {
+            "[A/D] Đi bộ  [W/Space] Nhảy  [D] Phá dỡ phế liệu  [C] Xe ủi Dọn Tất Cả  [Esc] Quay lại phố"
+        } else {
+            "[A/D] Walk  [W/Space] Jump  [D] Demolish Scrap  [C] Bulldozer Clean All  [Esc] Back to Files"
+        }
+    } else if lang == Language::Vi {
+        "[A/D/Left/Right] Đi bộ  [Space] Nhảy  [Enter] Vào  [o] Mở  [/] Tìm  [J] Phế liệu  [Esc] Lùi  [Tab] Sắp xếp  [D] Phá dỡ  [F11] Fullscreen  [Q] Thoát"
     } else {
-        "[A/D/Left/Right] Walk  [Space] Jump  [Enter] Enter  [o] Open  [/] Search  [Esc/Backspace] Back  [Tab] Sort  [D] Demolish  [F11] Fullscreen  [Q] Quit"
+        "[A/D/Left/Right] Walk  [Space] Jump  [Enter] Enter  [o] Open  [/] Search  [J] Scrapyard  [Esc] Back  [Tab] Sort  [D] Demolish  [F11] Fullscreen  [Q] Quit"
     };
     draw_text_f(
         hotkeys,
@@ -1035,6 +1074,10 @@ mod tests {
         assert_eq!(
             building_category_badge(BuildingCategory::Code, false, true),
             "[!]"
+        );
+        assert_eq!(
+            building_category_badge(BuildingCategory::Junk, false, false),
+            "[SCRAP]"
         );
     }
 

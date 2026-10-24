@@ -94,6 +94,7 @@ fn scan_node_recursive(
             file_type,
             children: Vec::new(),
             modified_secs_ago,
+            purge_action: None,
         });
     }
 
@@ -122,6 +123,7 @@ fn scan_node_recursive(
                 file_type,
                 children: Vec::new(),
                 modified_secs_ago,
+                purge_action: None,
             });
         }
     };
@@ -163,6 +165,7 @@ fn scan_node_recursive(
         file_type: BuildingCategory::from_path(path, true, is_hidden),
         children,
         modified_secs_ago,
+        purge_action: None,
     };
 
     node.sort_children(sort_mode);

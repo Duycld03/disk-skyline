@@ -242,6 +242,41 @@ pub async fn run_gui(app: App) {
                 while get_char_pressed().is_some() {}
                 gui.app.start_search();
             }
+
+            // Scrapyard toggle
+            if is_key_pressed(KeyCode::J) {
+                gui.app.toggle_scrapyard();
+                gui.avatar.x = GuiApp::STREET_MARGIN_LEFT;
+                gui.avatar.vx = 0.0;
+                gui.avatar.vy = 0.0;
+                gui.camera_x = 0.0;
+                gui.particles.clear();
+                if let Some((msg, is_err)) = gui.app.status_message.take() {
+                    gui.banner_message = Some((msg, is_err, 3.0));
+                }
+            }
+
+            // Bulldozer batch wipe in Scrapyard mode
+            if is_key_pressed(KeyCode::C) && gui.app.is_in_scrapyard() {
+                for p in &placements {
+                    let ground = GuiApp::ground_y(screen_h);
+                    let top_y = ground - p.height;
+                    gui.spawn_demolition_particles(
+                        p.x,
+                        top_y,
+                        p.width,
+                        p.height,
+                        Color::new(0.85, 0.45, 0.18, 1.0),
+                    );
+                }
+                let _ = gui.app.execute_bulldozer();
+                gui.avatar.x = GuiApp::STREET_MARGIN_LEFT;
+                gui.avatar.vx = 0.0;
+                gui.camera_x = 0.0;
+                if let Some((msg, is_err)) = gui.app.status_message.take() {
+                    gui.banner_message = Some((msg, is_err, 3.5));
+                }
+            }
             // Demolition trigger
             let trigger_demolish = is_key_pressed(KeyCode::Delete)
                 || ((is_key_pressed(KeyCode::D) || is_key_pressed(KeyCode::Delete))
@@ -282,7 +317,14 @@ pub async fn run_gui(app: App) {
         gui.update_selected_building_from_avatar(&placements);
 
         // 4. Render Scene
-        render_night_sky(&gui.stars, screen_w, screen_h, gui.camera_x, time);
+        render_night_sky(
+            &gui.stars,
+            screen_w,
+            screen_h,
+            gui.camera_x,
+            time,
+            gui.app.is_in_scrapyard(),
+        );
         render_street(screen_w, screen_h, gui.camera_x);
         render_street_radar(&placements, gui.avatar.x, max_street_x, screen_w, time);
 

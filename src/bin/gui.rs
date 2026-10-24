@@ -22,7 +22,11 @@ struct GuiCli {
 
     /// Interface language / Ngôn ngữ hiển thị (vi | en)
     #[arg(short, long, value_enum)]
-    lang: Option<Language>,
+    pub lang: Option<Language>,
+
+    /// Launch directly into the System Scrapyard survey (Đại Lộ Phế Liệu)
+    #[arg(short = 's', long)]
+    pub scrapyard: bool,
 }
 
 fn main() {
@@ -49,11 +53,16 @@ fn main() {
 
     let language = cli.lang.unwrap_or_else(Language::detect_system);
 
-    let root_node = match scan_directory(&target_path, &options) {
-        Ok(node) => node,
-        Err(e) => {
-            eprintln!("Error scanning directory: {}", e);
-            return;
+    let root_node = if cli.scrapyard {
+        let targets = disk_skyline::cleaner::survey_all_system_junk();
+        disk_skyline::model::BuildingNode::build_scrapyard_avenue(&targets)
+    } else {
+        match scan_directory(&target_path, &options) {
+            Ok(node) => node,
+            Err(e) => {
+                eprintln!("Error scanning directory: {}", e);
+                return;
+            }
         }
     };
 

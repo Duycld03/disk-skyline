@@ -9,6 +9,7 @@ pub enum BuildingCategory {
     Binary,
     Document,
     Restricted,
+    Junk,
     Other,
 }
 
@@ -67,6 +68,8 @@ impl BuildingCategory {
             (crate::i18n::Language::En, BuildingCategory::Restricted) => {
                 "Restricted Bunker (Hidden)"
             }
+            (crate::i18n::Language::Vi, BuildingCategory::Junk) => "Bãi phế liệu (Rác hệ thống)",
+            (crate::i18n::Language::En, BuildingCategory::Junk) => "Scrapyard (System Junk)",
             (crate::i18n::Language::Vi, BuildingCategory::Other) => "Công trình Dân dụng",
             (crate::i18n::Language::En, BuildingCategory::Other) => "Civic / General File",
         }
@@ -120,6 +123,7 @@ pub struct BuildingNode {
     pub file_type: BuildingCategory,
     pub children: Vec<BuildingNode>,
     pub modified_secs_ago: Option<u64>,
+    pub purge_action: Option<crate::cleaner::PurgeAction>,
 }
 
 impl BuildingNode {
@@ -143,6 +147,7 @@ impl BuildingNode {
             file_type,
             children,
             modified_secs_ago: None,
+            purge_action: None,
         }
     }
 
@@ -166,6 +171,7 @@ impl BuildingNode {
             file_type,
             children,
             modified_secs_ago: None,
+            purge_action: None,
         }
     }
 
@@ -208,6 +214,40 @@ impl BuildingNode {
                         .then_with(|| b.size.cmp(&a.size))
                 });
             }
+        }
+    }
+
+    pub fn build_scrapyard_avenue(targets: &[crate::cleaner::CleanableTarget]) -> BuildingNode {
+        let mut total_size = 0u64;
+        let mut children = Vec::new();
+
+        for target in targets {
+            total_size = total_size.saturating_add(target.size);
+            children.push(BuildingNode {
+                name: target.name.clone(),
+                path: PathBuf::from(format!("//scrapyard/{}", target.id)),
+                is_dir: false,
+                is_hidden: false,
+                is_system_protected: target.requires_sudo,
+                size: target.size,
+                file_type: BuildingCategory::Junk,
+                children: Vec::new(),
+                modified_secs_ago: None,
+                purge_action: Some(target.purge_action.clone()),
+            });
+        }
+
+        BuildingNode {
+            name: "ĐẠI LỘ PHẾ LIỆU (SCRAPYARD)".into(),
+            path: PathBuf::from("//scrapyard"),
+            is_dir: true,
+            is_hidden: false,
+            is_system_protected: false,
+            size: total_size,
+            file_type: BuildingCategory::Junk,
+            children,
+            modified_secs_ago: None,
+            purge_action: None,
         }
     }
 }

@@ -15,6 +15,7 @@ pub struct App {
     pub language: crate::i18n::Language,
     pub search_query: Option<String>,
     pub pre_search_index: Option<usize>,
+    pub saved_root_node: Option<BuildingNode>,
 }
 
 impl App {
@@ -29,6 +30,7 @@ impl App {
             language: crate::i18n::Language::default(),
             search_query: None,
             pre_search_index: None,
+            saved_root_node: None,
         }
     }
 
@@ -119,11 +121,49 @@ impl App {
     }
 
     pub fn navigate_up(&mut self) -> bool {
+        if self.nav.current_path_indices.is_empty() {
+            if self.saved_root_node.is_some() {
+                self.toggle_scrapyard();
+                return true;
+            }
+            return false;
+        }
         let success = self.nav.navigate_up();
         if success {
             self.status_message = Some((self.language.navigate_up_success().to_string(), false));
         }
         success
+    }
+
+    pub fn is_in_scrapyard(&self) -> bool {
+        self.saved_root_node.is_some()
+    }
+
+    pub fn toggle_scrapyard(&mut self) -> bool {
+        if let Some(prev_root) = self.saved_root_node.take() {
+            self.root_node = prev_root;
+            self.nav = NavigationState::new();
+            self.status_message = Some((self.language.scrapyard_exited().to_string(), false));
+            false
+        } else {
+            let targets = crate::cleaner::survey_all_system_junk();
+            let prev = std::mem::replace(
+                &mut self.root_node,
+                BuildingNode::build_scrapyard_avenue(&targets),
+            );
+            self.saved_root_node = Some(prev);
+            self.nav = NavigationState::new();
+            self.status_message = Some((self.language.scrapyard_entered().to_string(), false));
+            true
+        }
+    }
+
+    pub fn execute_bulldozer(&mut self) -> Result<u64, std::io::Error> {
+        let freed = crate::demolish::execute_bulldozer_purge(&mut self.root_node)?;
+        self.nav.selected_index = 0;
+        let bytes_str = crate::model::format_bytes(freed);
+        self.status_message = Some((self.language.bulldozer_success(&bytes_str), false));
+        Ok(freed)
     }
 
     pub fn toggle_sort(&mut self) {
@@ -366,6 +406,12 @@ impl App {
             }
             KeyCode::Char('/') => {
                 self.start_search();
+            }
+            KeyCode::Char('j') | KeyCode::Char('J') => {
+                self.toggle_scrapyard();
+            }
+            KeyCode::Char('c') | KeyCode::Char('C') if self.is_in_scrapyard() => {
+                let _ = self.execute_bulldozer();
             }
             _ => {}
         }
@@ -642,5 +688,26 @@ mod tests {
         assert!(app.status_message.is_some());
         let (msg, _) = app.status_message.unwrap();
         assert!(msg.contains("src"));
+    }
+
+    #[test]
+    fn test_scrapyard_mode_transitions_and_bulldozer() {
+        let tree = create_mock_tree();
+        let mut app = App::new(tree, ScannerOptions::default());
+        assert!(!app.is_in_scrapyard());
+
+        // Toggle into Scrapyard
+        assert!(app.toggle_scrapyard());
+        assert!(app.is_in_scrapyard());
+        assert!(app.root_node.name.contains("SCRAPYARD"));
+
+        // Bulldozer purge executes cleanly
+        let res = app.execute_bulldozer();
+        assert!(res.is_ok());
+
+        // Navigate up exits back to original filesystem tree
+        assert!(app.navigate_up());
+        assert!(!app.is_in_scrapyard());
+        assert_eq!(app.root_node.name, "root");
     }
 }

@@ -83,6 +83,16 @@ impl BuildingTheme {
                     crate::i18n::Language::En => "[BAN]",
                 },
             },
+            BuildingCategory::Junk => BuildingTheme {
+                border_color: Color::Rgb(215, 110, 40), // Rust Amber
+                window_color: Color::LightYellow,
+                roof_pattern: "/SCRAP\\",
+                floor_pattern: "%*%",
+                door_pattern: match language {
+                    crate::i18n::Language::Vi => "[RÁC]",
+                    crate::i18n::Language::En => "[JNK]",
+                },
+            },
             BuildingCategory::Other => BuildingTheme {
                 border_color: Color::Gray,
                 window_color: Color::White,
