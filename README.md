@@ -11,6 +11,10 @@ Featuring **dual binary targets**:
 1. 🖥️ **`disk-skyline`**: Blazing-fast terminal TUI powered by [Ratatui](https://ratatui.rs) and [Crossterm](https://github.com/crossterm-rs/crossterm).
 2. 🎮 **`disk-skyline-gui`**: Standalone 60 FPS 2D desktop arcade game window powered by [Macroquad](https://macroquad.rs), featuring a walking pixel avatar, jumping physics, smooth camera tracking, retro RPG HUD, and explosion particle effects!
 
+<p align="center">
+  <img src="docs/images/disk-skyline-2d-preview.png" alt="Disk Skyline 2D Desktop Arcade Game UI" width="900" />
+</p>
+
 ```text
 ================================================================================
  DISK SKYLINE - Urban Planning Initialized
