@@ -40,10 +40,7 @@ fn main() {
         }
     }
 
-    let target_path = cli
-        .path
-        .canonicalize()
-        .unwrap_or_else(|_| cli.path.clone());
+    let target_path = cli.path.canonicalize().unwrap_or_else(|_| cli.path.clone());
 
     let options = ScannerOptions {
         max_depth: cli.depth,
