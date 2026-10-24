@@ -211,10 +211,11 @@ fn test_e2e_cli_binary_execution_on_repo_sandbox() {
     fs::write(sandbox.join("archive.zip"), vec![b'z'; 40_000]).unwrap();
     fs::write(sandbox.join("script.py"), vec![b'p'; 8_000]).unwrap();
 
-    let bin_path = repo_dir.join("target/release/disk-skyline");
+    let bin_path = PathBuf::from(env!("CARGO_BIN_EXE_disk-skyline"));
     assert!(
         bin_path.exists(),
-        "Compiled binary target/release/disk-skyline must exist"
+        "Compiled binary {:?} must exist",
+        bin_path
     );
 
     let output = Command::new(&bin_path)
