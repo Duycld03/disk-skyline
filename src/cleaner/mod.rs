@@ -250,33 +250,36 @@ pub fn probe_package_caches() -> Vec<CleanableTarget> {
         }
     }
 
-    // 2. Pip & UV Cache
+    // 2. Python Pip Cache
     let pip_cache = home.join(".cache/pip");
-    let uv_cache = home.join(".cache/uv");
-    let mut py_size = 0u64;
-    let mut py_paths = Vec::new();
     if pip_cache.is_dir() {
-        py_size = py_size.saturating_add(calculate_dir_size(&pip_cache));
-        py_paths.push(pip_cache);
+        let size = calculate_dir_size(&pip_cache);
+        if size > 5 * 1024 * 1024 {
+            targets.push(CleanableTarget {
+                id: "pip".into(),
+                name: "Python Pip Cache".into(),
+                size,
+                description: "Cached wheels and downloads in ~/.cache/pip".into(),
+                purge_action: PurgeAction::DirectoryDelete(pip_cache),
+                requires_sudo: false,
+            });
+        }
     }
+
+    // 3. Python uv Cache
+    let uv_cache = home.join(".cache/uv");
     if uv_cache.is_dir() {
-        py_size = py_size.saturating_add(calculate_dir_size(&uv_cache));
-        py_paths.push(uv_cache);
-    }
-    if py_size > 5 * 1024 * 1024 {
-        // Purge the largest one found or pip cache
-        let target_dir = py_paths
-            .into_iter()
-            .max_by_key(|p| calculate_dir_size(p))
-            .unwrap();
-        targets.push(CleanableTarget {
-            id: "pip".into(),
-            name: "Python Pip & UV Cache".into(),
-            size: py_size,
-            description: "Cached wheels and downloads in ~/.cache/pip".into(),
-            purge_action: PurgeAction::DirectoryDelete(target_dir),
-            requires_sudo: false,
-        });
+        let size = calculate_dir_size(&uv_cache);
+        if size > 5 * 1024 * 1024 {
+            targets.push(CleanableTarget {
+                id: "uv".into(),
+                name: "Python uv Cache".into(),
+                size,
+                description: "Cached packages and wheels in ~/.cache/uv".into(),
+                purge_action: PurgeAction::DirectoryDelete(uv_cache),
+                requires_sudo: false,
+            });
+        }
     }
 
     // 3. Cargo Registry Cache

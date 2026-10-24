@@ -127,9 +127,16 @@ pub fn execute_bulldozer_purge(parent_node: &mut BuildingNode) -> Result<u64, st
     let mut i = 0;
     while i < parent_node.children.len() {
         if let Some(action) = parent_node.children[i].purge_action.clone() {
-            let _ = action.execute();
-            let removed = parent_node.children.remove(i);
-            total_freed = total_freed.saturating_add(removed.size);
+            match action.execute() {
+                Ok(()) => {
+                    let removed = parent_node.children.remove(i);
+                    total_freed = total_freed.saturating_add(removed.size);
+                }
+                Err(_) => {
+                    // Retain target in avenue if purge failed (e.g. sudo required or daemon down)
+                    i += 1;
+                }
+            }
         } else {
             i += 1;
         }
