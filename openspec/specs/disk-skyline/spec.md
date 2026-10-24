@@ -29,7 +29,7 @@ The system SHALL render the active directory's child items as a 2D city skyline 
 - **THEN** the logarithmic scaling ensures the small file remains visibly rendered with at least minimum foundation height and the large file does not exceed viewport bounds
 
 ### Requirement: Interactive Street Navigation and Drill-Down
-The system SHALL allow users to navigate horizontally along the street using arrow keys (`Left`/`Right`) or vim keys (`h`/`l`), highlighting the focused building and displaying its metadata in a HUD pane. The system SHALL navigate into a directory when `Enter` is pressed and return to the parent directory when `Esc` or `Backspace` is pressed.
+The system SHALL allow users to navigate horizontally along the street using arrow keys (`Left`/`Right`) or vim keys (`h`/`l`), highlighting the focused building and displaying its metadata in a HUD pane. The system SHALL navigate into a directory when `Enter` is pressed, return to the parent directory when `Esc` or `Backspace` is pressed, and toggle display language when `L` is pressed.
 
 #### Scenario: Panning along the street
 - **WHEN** the user presses `Right` or `l`
@@ -43,6 +43,9 @@ The system SHALL allow users to navigate horizontally along the street using arr
 - **WHEN** the user presses `Esc` or `Backspace` while inside a child directory
 - **THEN** the viewport returns to the parent street and restores focus to that directory's building
 
+#### Scenario: Toggling UI language hotkey
+- **WHEN** the user presses `L` during street navigation
+- **THEN** the system alternates the active locale and re-renders the skyline HUD and controls in the newly selected language
 ### Requirement: Restricted Area Classification for Hidden Files
 The system SHALL classify any file or directory whose name starts with a dot (`.`) as a restricted zone. The system SHALL calculate its disk footprint normally while rendering it on the skyline with distinctive bunker/hazard motifs and a restricted warning tag.
 
