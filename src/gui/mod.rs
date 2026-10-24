@@ -20,9 +20,13 @@ pub fn window_conf() -> Conf {
     }
 }
 
+const FONT_DATA: &[u8] = include_bytes!("../../assets/fonts/font.ttf");
+
 pub async fn run_gui(app: App) {
     let mut gui = GuiApp::new(app);
-
+    if let Ok(loaded_font) = macroquad::text::load_ttf_font_from_bytes(FONT_DATA) {
+        gui.font = Some(loaded_font);
+    }
     loop {
         let dt = get_frame_time().min(0.1);
         let screen_w = screen_width();
@@ -135,12 +139,9 @@ pub async fn run_gui(app: App) {
                     gui.avatar.vy = 0.0;
                     gui.camera_x = 0.0;
                     gui.particles.clear();
-                    let msg = if gui.app.language == Language::Vi {
-                        format!("Đã bước vào công trình: {}", gui.app.current_node().name)
-                    } else {
-                        format!("Entered building: {}", gui.app.current_node().name)
-                    };
-                    gui.banner_message = Some((msg, false, 2.0));
+                    if let Some((msg, is_err)) = gui.app.status_message.take() {
+                        gui.banner_message = Some((msg, is_err, 2.0));
+                    }
                 } else if let Some((msg, is_err)) = gui.app.status_message.take() {
                     gui.banner_message = Some((msg, is_err, 2.5));
                 }
@@ -155,19 +156,17 @@ pub async fn run_gui(app: App) {
                 gui.avatar.vy = 0.0;
                 gui.camera_x = 0.0;
                 gui.particles.clear();
-                let msg = if gui.app.language == Language::Vi {
-                    "Đã lùi về con phố cha.".to_string()
-                } else {
-                    "Returned to parent avenue.".to_string()
-                };
-                gui.banner_message = Some((msg, false, 2.0));
+                if let Some((msg, is_err)) = gui.app.status_message.take() {
+                    gui.banner_message = Some((msg, is_err, 2.0));
+                }
             }
 
             // Toggle Sort
             if is_key_pressed(KeyCode::Tab) {
                 gui.app.toggle_sort();
-                let msg = format!("Quy hoạch: {}", gui.app.nav.sort_mode.label());
-                gui.banner_message = Some((msg, false, 2.0));
+                if let Some((msg, is_err)) = gui.app.status_message.take() {
+                    gui.banner_message = Some((msg, is_err, 2.0));
+                }
             }
 
             // Toggle Language
@@ -226,10 +225,19 @@ pub async fn run_gui(app: App) {
 
         // Render Buildings
         let curr_node = gui.app.current_node();
+        let font_ref = gui.font.as_ref();
         for p in &placements {
             let is_selected = p.node_index == gui.app.nav.selected_index;
             if let Some(child) = curr_node.children.get(p.node_index) {
-                render_building(p, child, is_selected, screen_h, gui.camera_x, time);
+                render_building(
+                    p,
+                    child,
+                    is_selected,
+                    screen_h,
+                    gui.camera_x,
+                    time,
+                    font_ref,
+                );
             }
         }
 
@@ -239,13 +247,13 @@ pub async fn run_gui(app: App) {
 
         // Render RPG HUD
         let selected_child = gui.app.current_selected_child();
-        render_rpg_hud(&gui.app, selected_child, screen_w, screen_h);
+        render_rpg_hud(&gui.app, selected_child, screen_w, screen_h, font_ref);
 
         // Render Modal or Banner if active
         if let Some(m) = &gui.modal {
-            render_demolish_modal(m, screen_w, screen_h);
+            render_demolish_modal(m, gui.app.language, screen_w, screen_h, font_ref);
         } else if let Some((msg, is_err, _)) = &gui.banner_message {
-            render_banner(msg, *is_err, screen_w);
+            render_banner(msg, *is_err, screen_w, font_ref);
         }
 
         next_frame().await;

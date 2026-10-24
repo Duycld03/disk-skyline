@@ -2,6 +2,7 @@ use crate::gui::state::{Avatar, BuildingPlacement2D, Direction, GuiApp, Particle
 use crate::i18n::Language;
 use crate::model::{format_bytes, BuildingCategory, BuildingNode};
 use macroquad::prelude::*;
+use macroquad::text::Font;
 
 pub fn category_color(cat: BuildingCategory) -> Color {
     match cat {
@@ -13,6 +14,73 @@ pub fn category_color(cat: BuildingCategory) -> Color {
         BuildingCategory::Document => Color::new(0.85, 0.88, 0.92, 1.0),  // Silver White
         BuildingCategory::Restricted => Color::new(0.90, 0.15, 0.15, 1.0), // Danger Red
         BuildingCategory::Other => Color::new(0.60, 0.65, 0.72, 1.0),     // Industrial Slate
+    }
+}
+
+pub fn draw_text_f(text: &str, x: f32, y: f32, font_size: f32, color: Color, font: Option<&Font>) {
+    if let Some(f) = font {
+        macroquad::text::draw_text_ex(
+            text,
+            x,
+            y,
+            macroquad::text::TextParams {
+                font: Some(f),
+                font_size: font_size as u16,
+                font_scale: 1.0,
+                font_scale_aspect: 1.0,
+                color,
+                rotation: 0.0,
+            },
+        );
+    } else {
+        macroquad::text::draw_text(text, x, y, font_size, color);
+    }
+}
+
+pub fn measure_text_f(text: &str, font_size: f32, font: Option<&Font>) -> f32 {
+    macroquad::text::measure_text(text, font, font_size as u16, 1.0).width
+}
+
+pub fn fit_text_to_width(text: &str, max_w: f32, font_size: f32, font: Option<&Font>) -> String {
+    if max_w <= 8.0 {
+        return String::new();
+    }
+    let full_w = measure_text_f(text, font_size, font);
+    if full_w <= max_w {
+        return text.to_string();
+    }
+
+    let mut truncated = text.to_string();
+    while !truncated.is_empty() {
+        truncated.pop();
+        let candidate = format!("{}..", truncated);
+        if measure_text_f(&candidate, font_size, font) <= max_w {
+            return candidate;
+        }
+    }
+    String::new()
+}
+
+pub fn building_category_badge(
+    cat: BuildingCategory,
+    is_dir: bool,
+    is_protected: bool,
+) -> &'static str {
+    if is_protected {
+        "[!]"
+    } else if is_dir {
+        "[DIR]"
+    } else {
+        match cat {
+            BuildingCategory::Code => "[CODE]",
+            BuildingCategory::Media => "[MEDIA]",
+            BuildingCategory::Archive => "[ZIP]",
+            BuildingCategory::Binary => "[BIN]",
+            BuildingCategory::Document => "[DOC]",
+            BuildingCategory::Restricted => "[LOCK]",
+            BuildingCategory::Directory => "[DIR]",
+            BuildingCategory::Other => "[FILE]",
+        }
     }
 }
 
@@ -125,6 +193,7 @@ pub fn render_building(
     screen_h: f32,
     camera_x: f32,
     time: f64,
+    font: Option<&Font>,
 ) {
     let screen_x = placement.x - camera_x;
     let ground = GuiApp::ground_y(screen_h);
@@ -235,7 +304,7 @@ pub fn render_building(
 
     // System protected badge
     if node.is_system_protected {
-        let lock_w = 48.0;
+        let lock_w = 56.0;
         let lock_h = 16.0;
         let lock_x = screen_x + (placement.width - lock_w) / 2.0;
         let lock_y = top_y + 4.0;
@@ -246,7 +315,42 @@ pub fn render_building(
             lock_h,
             Color::new(0.85, 0.15, 0.15, 0.9),
         );
-        draw_text("SYS LOCK", lock_x + 3.0, lock_y + 12.0, 12.0, WHITE);
+        draw_text_f("SYS LOCK", lock_x + 3.0, lock_y + 12.0, 11.0, WHITE, font);
+    }
+
+    // Upper Facade Neon Signboard (visible from afar)
+    if placement.height >= 40.0 && placement.width >= 36.0 {
+        let sign_y = top_y + if node.is_system_protected { 24.0 } else { 8.0 };
+        let sign_h = 16.0;
+        let sign_pad = 4.0;
+        let sign_w = placement.width - sign_pad * 2.0;
+        let sign_x = screen_x + sign_pad;
+
+        draw_rectangle(
+            sign_x,
+            sign_y,
+            sign_w,
+            sign_h,
+            Color::new(0.04, 0.05, 0.08, 0.90),
+        );
+        let border_c = Color::new(col.r, col.g, col.b, if is_selected { 0.95 } else { 0.65 });
+        draw_rectangle_lines(sign_x, sign_y, sign_w, sign_h, 1.0, border_c);
+
+        let badge = building_category_badge(cat, node.is_dir, node.is_system_protected);
+        let full_text = format!("{} {}", badge, node.name);
+        let fitted_text = fit_text_to_width(&full_text, sign_w - 6.0, 11.0, font);
+        draw_text_f(
+            &fitted_text,
+            sign_x + 3.0,
+            sign_y + 12.0,
+            11.0,
+            if is_selected {
+                Color::new(1.0, 0.95, 0.4, 1.0)
+            } else {
+                col
+            },
+            font,
+        );
     }
 
     // Animated selection indicator arrow
@@ -258,6 +362,65 @@ pub fn render_building(
             Vec2::new(roof_mid + 7.0, arrow_tip_y - 12.0),
             Vec2::new(roof_mid, arrow_tip_y),
             Color::new(1.0, 0.9, 0.1, 1.0),
+        );
+    }
+
+    // Street-level Nameplate & Size along sidewalk curb
+    {
+        let plate_y = ground + 6.0;
+        let plate_w = placement.width.max(48.0);
+        let plate_x = screen_x + (placement.width - plate_w) / 2.0;
+        let plate_h = 28.0;
+
+        draw_rectangle(
+            plate_x,
+            plate_y,
+            plate_w,
+            plate_h,
+            if is_selected {
+                Color::new(0.12, 0.16, 0.24, 0.95)
+            } else {
+                Color::new(0.06, 0.08, 0.12, 0.85)
+            },
+        );
+        draw_rectangle_lines(
+            plate_x,
+            plate_y,
+            plate_w,
+            plate_h,
+            if is_selected { 1.5 } else { 1.0 },
+            if is_selected {
+                Color::new(1.0, 0.9, 0.2, 0.95)
+            } else {
+                Color::new(col.r * 0.7, col.g * 0.7, col.b * 0.7, 0.5)
+            },
+        );
+
+        // Row 1: Name
+        let name_text = fit_text_to_width(&node.name, plate_w - 6.0, 11.0, font);
+        draw_text_f(
+            &name_text,
+            plate_x + 3.0,
+            plate_y + 11.0,
+            11.0,
+            if is_selected {
+                WHITE
+            } else {
+                Color::new(0.85, 0.88, 0.92, 1.0)
+            },
+            font,
+        );
+
+        // Row 2: Formatted Size
+        let size_str = format_bytes(node.size);
+        let size_text = fit_text_to_width(&size_str, plate_w - 6.0, 10.0, font);
+        draw_text_f(
+            &size_text,
+            plate_x + 3.0,
+            plate_y + 23.0,
+            10.0,
+            Color::new(0.4, 0.85, 0.5, 0.95),
+            font,
         );
     }
 }
@@ -381,6 +544,7 @@ pub fn render_rpg_hud(
     selected_node: Option<&BuildingNode>,
     screen_w: f32,
     screen_h: f32,
+    font: Option<&Font>,
 ) {
     let lang = app.language;
 
@@ -403,16 +567,24 @@ pub fn render_rpg_hud(
 
     // Game Title & Avenue
     let title = "DISK SKYLINE 2D [MACROQUAD]";
-    draw_text(title, 24.0, 30.0, 18.0, Color::new(0.3, 0.9, 0.95, 1.0));
+    draw_text_f(
+        title,
+        24.0,
+        30.0,
+        18.0,
+        Color::new(0.3, 0.9, 0.95, 1.0),
+        font,
+    );
 
     let trail = app.breadcrumbs().join(" / ");
     let avenue_str = lang.avenue_title(&trail);
-    draw_text(
+    draw_text_f(
         &avenue_str,
         24.0,
         52.0,
         15.0,
         Color::new(0.85, 0.85, 0.85, 1.0),
+        font,
     );
 
     // Disk Free Capacity Bar
@@ -427,14 +599,14 @@ pub fn render_rpg_hud(
     } else {
         format!("Total Capacity: {}", format_bytes(root_size))
     };
-    draw_text(
+    draw_text_f(
         &capacity_label,
         bar_x,
         bar_y - 4.0,
         13.0,
         Color::new(0.8, 0.8, 0.8, 1.0),
+        font,
     );
-
     // Outer bar border
     draw_rectangle(
         bar_x,
@@ -460,16 +632,17 @@ pub fn render_rpg_hud(
     );
 
     let lang_hint = if lang == Language::Vi {
-        "[L] Doi sang English".to_string()
+        "[L] Đổi sang English".to_string()
     } else {
         "[L] Switch to Vietnamese".to_string()
     };
-    draw_text(
+    draw_text_f(
         &lang_hint,
         bar_x,
         bar_y + 32.0,
         13.0,
         Color::new(1.0, 0.85, 0.25, 1.0),
+        font,
     );
 
     // --- BOTTOM BAR: RPG Target Card & Hotkeys ---
@@ -503,19 +676,20 @@ pub fn render_rpg_hud(
             "BUILDING: "
         };
         let name_str = format!("{}{}", name_prefix, node.name);
-        draw_text(&name_str, 24.0, card_y + 26.0, 18.0, WHITE);
+        draw_text_f(&name_str, 24.0, card_y + 26.0, 18.0, WHITE, font);
 
         // Category Badge with dynamic width
         let cat_label = cat.display_label_lang(lang);
-        let badge_dim = measure_text(cat_label, None, 13, 1.0);
-        let badge_w = (badge_dim.width + 18.0).max(120.0);
+        let badge_width = measure_text_f(cat_label, 13.0, font);
+        let badge_w = (badge_width + 18.0).max(120.0);
         draw_rectangle(24.0, card_y + 35.0, badge_w, 20.0, cat_col);
-        draw_text(
+        draw_text_f(
             cat_label,
             32.0,
             card_y + 49.0,
             13.0,
             Color::new(0.05, 0.05, 0.05, 1.0),
+            font,
         );
 
         // Size & Items info dynamically positioned after badge
@@ -525,16 +699,17 @@ pub fn render_rpg_hud(
             format!("Size: {}", format_bytes(node.size))
         };
         let size_x = 24.0 + badge_w + 18.0;
-        draw_text(
+        draw_text_f(
             &size_str,
             size_x,
             card_y + 50.0,
             15.0,
             Color::new(0.9, 0.9, 0.9, 1.0),
+            font,
         );
 
-        let size_dim = measure_text(&size_str, None, 15, 1.0);
-        let next_x = size_x + size_dim.width + 24.0;
+        let size_width = measure_text_f(&size_str, 15.0, font);
+        let next_x = size_x + size_width + 24.0;
 
         if node.is_dir {
             let child_str = if lang == Language::Vi {
@@ -542,12 +717,13 @@ pub fn render_rpg_hud(
             } else {
                 format!("Scale: {} sub-buildings", node.children.len())
             };
-            draw_text(
+            draw_text_f(
                 &child_str,
                 next_x,
                 card_y + 50.0,
                 15.0,
                 Color::new(0.7, 0.85, 1.0, 1.0),
+                font,
             );
         }
 
@@ -557,12 +733,13 @@ pub fn render_rpg_hud(
             } else {
                 "[SYSTEM PROTECTED LOCK - DEMOLITION FORBIDDEN]"
             };
-            draw_text(
+            draw_text_f(
                 lock_notice,
                 next_x + 220.0,
                 card_y + 50.0,
                 14.0,
                 Color::new(1.0, 0.3, 0.3, 1.0),
+                font,
             );
         }
     } else {
@@ -571,7 +748,7 @@ pub fn render_rpg_hud(
         } else {
             "Standing on open street..."
         };
-        draw_text(empty_msg, 24.0, card_y + 36.0, 16.0, GRAY);
+        draw_text_f(empty_msg, 24.0, card_y + 36.0, 16.0, GRAY, font);
     }
 
     // Key command bar hints
@@ -580,24 +757,27 @@ pub fn render_rpg_hud(
     } else {
         "[A/D/Left/Right] Walk  [Space] Jump  [Enter] Enter  [Esc/Backspace] Back  [Tab] Sort  [D] Demolish  [F11] Fullscreen  [Q] Quit"
     };
-    draw_text(
+    draw_text_f(
         hotkeys,
         24.0,
         card_y + 85.0,
         14.0,
         Color::new(1.0, 0.85, 0.3, 0.95),
+        font,
     );
 }
 
 pub fn render_demolish_modal(
     modal: &crate::gui::state::GuiDemolishModal,
+    lang: Language,
     screen_w: f32,
     screen_h: f32,
+    font: Option<&Font>,
 ) {
     // Dim background
     draw_rectangle(0.0, 0.0, screen_w, screen_h, Color::new(0.0, 0.0, 0.0, 0.7));
 
-    let mw = 520.0;
+    let mw = 540.0;
     let mh = 200.0;
     let mx = (screen_w - mw) / 2.0;
     let my = (screen_h - mh) / 2.0;
@@ -607,50 +787,65 @@ pub fn render_demolish_modal(
     draw_rectangle_lines(mx, my, mw, mh, 2.5, Color::new(0.9, 0.2, 0.2, 1.0));
 
     // Title
-    draw_text(
-        "LỆNH PHÁ DỠ CÔNG TRÌNH (DEMOLITION ORDER)",
+    let title = lang.demolish_modal_title();
+    draw_text_f(
+        title,
         mx + 25.0,
         my + 36.0,
         18.0,
         Color::new(1.0, 0.3, 0.3, 1.0),
+        font,
     );
 
-    let info = format!(
-        "Bạn có chắc muốn san phẳng: {} ({})?",
-        modal.target_name, modal.target_size_formatted
-    );
-    draw_text(&info, mx + 25.0, my + 80.0, 16.0, WHITE);
+    let info = if lang == Language::Vi {
+        format!(
+            "Bạn có chắc muốn san phẳng: {} ({})?",
+            modal.target_name, modal.target_size_formatted
+        )
+    } else {
+        format!(
+            "Are you sure you want to demolish: {} ({})?",
+            modal.target_name, modal.target_size_formatted
+        )
+    };
+    draw_text_f(&info, mx + 25.0, my + 80.0, 16.0, WHITE, font);
 
-    let warn = "Hành động này sẽ XÓA VĨNH VIỄN tệp/thư mục khỏi đĩa lưu trữ!";
-    draw_text(
+    let warn = lang.demolish_warning();
+    draw_text_f(
         warn,
         mx + 25.0,
         my + 112.0,
         13.0,
         Color::new(0.9, 0.7, 0.2, 1.0),
+        font,
     );
 
     // Buttons
     draw_rectangle(
         mx + 40.0,
         my + 140.0,
-        180.0,
+        200.0,
         34.0,
         Color::new(0.85, 0.15, 0.15, 1.0),
     );
-    draw_text("[Y] Xác nhận phá dỡ", mx + 55.0, my + 162.0, 15.0, WHITE);
+    let (confirm_btn, cancel_btn) = if lang == Language::Vi {
+        ("[Y] Tiến hành phá dỡ", "[N/Esc] Hủy bỏ")
+    } else {
+        ("[Y] Confirm Demolition", "[N/Esc] Cancel")
+    };
+    draw_text_f(confirm_btn, mx + 50.0, my + 162.0, 15.0, WHITE, font);
 
     draw_rectangle(
-        mx + 280.0,
+        mx + 300.0,
         my + 140.0,
         180.0,
         34.0,
         Color::new(0.25, 0.28, 0.35, 1.0),
     );
-    draw_text("[N/Esc] Hủy bỏ", mx + 325.0, my + 162.0, 15.0, WHITE);
+    draw_text_f(cancel_btn, mx + 345.0, my + 162.0, 15.0, WHITE, font);
 }
 
-pub fn render_banner(msg: &str, is_error: bool, screen_w: f32) {
+pub fn render_banner(msg: &str, is_error: bool, screen_w: f32, font: Option<&Font>) {
     let bw = 640.0;
     let bh = 40.0;
     let bx = (screen_w - bw) / 2.0;
@@ -664,5 +859,51 @@ pub fn render_banner(msg: &str, is_error: bool, screen_w: f32) {
 
     draw_rectangle(bx, by, bw, bh, bg);
     draw_rectangle_lines(bx, by, bw, bh, 1.5, WHITE);
-    draw_text(msg, bx + 16.0, by + 25.0, 15.0, WHITE);
+    draw_text_f(msg, bx + 16.0, by + 25.0, 15.0, WHITE, font);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_building_category_badges() {
+        assert_eq!(
+            building_category_badge(BuildingCategory::Directory, true, false),
+            "[DIR]"
+        );
+        assert_eq!(
+            building_category_badge(BuildingCategory::Code, false, false),
+            "[CODE]"
+        );
+        assert_eq!(
+            building_category_badge(BuildingCategory::Media, false, false),
+            "[MEDIA]"
+        );
+        assert_eq!(
+            building_category_badge(BuildingCategory::Archive, false, false),
+            "[ZIP]"
+        );
+        assert_eq!(
+            building_category_badge(BuildingCategory::Binary, false, false),
+            "[BIN]"
+        );
+        assert_eq!(
+            building_category_badge(BuildingCategory::Document, false, false),
+            "[DOC]"
+        );
+        assert_eq!(
+            building_category_badge(BuildingCategory::Code, false, true),
+            "[!]"
+        );
+    }
+
+    #[test]
+    fn test_fit_text_to_width_boundary() {
+        // Narrow width returns empty string
+        assert_eq!(
+            fit_text_to_width("very_long_building_name.rs", 5.0, 11.0, None),
+            ""
+        );
+    }
 }

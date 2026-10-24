@@ -101,19 +101,14 @@ impl App {
                 let success = self.nav.drill_down(child_count);
                 if success {
                     self.status_message =
-                        Some((format!("Đã bước vào công trình: {}", child_name), false));
+                        Some((self.language.drill_down_entered(&child_name), false));
                 }
                 return success;
             } else if is_dir {
-                self.status_message = Some((
-                    "Thư mục trống, không có công trình bên trong.".into(),
-                    false,
-                ));
+                self.status_message =
+                    Some((self.language.drill_down_empty_err().to_string(), false));
             } else {
-                self.status_message = Some((
-                    format!("{} là file đơn lẻ, không thể đi vào.", child_name),
-                    false,
-                ));
+                self.status_message = Some((self.language.drill_down_file_err(&child_name), false));
             }
         }
         false
@@ -122,7 +117,7 @@ impl App {
     pub fn navigate_up(&mut self) -> bool {
         let success = self.nav.navigate_up();
         if success {
-            self.status_message = Some(("Đã lùi về con phố cha.".into(), false));
+            self.status_message = Some((self.language.navigate_up_success().to_string(), false));
         }
         success
     }
@@ -131,7 +126,8 @@ impl App {
         self.nav.sort_mode = self.nav.sort_mode.next();
         let mode = self.nav.sort_mode;
         self.current_node_mut().sort_children(mode);
-        self.status_message = Some((format!("Đã quy hoạch lại: {}", mode.label()), false));
+        let mode_label = mode.label_lang(self.language);
+        self.status_message = Some((self.language.zoning_switched(mode_label), false));
     }
 
     pub fn rescan_current(&mut self) -> Result<(), std::io::Error> {
@@ -420,5 +416,42 @@ mod tests {
             app.status_message.unwrap().1,
             "Rejection status message must be flagged as error"
         );
+    }
+
+    #[test]
+    fn test_navigation_localized_messages() {
+        let file_child = BuildingNode::new(
+            "test.txt".into(),
+            PathBuf::from("/test.txt"),
+            false,
+            false,
+            100,
+            vec![],
+        );
+        let root = BuildingNode::new(
+            "root".into(),
+            PathBuf::from("/"),
+            true,
+            false,
+            100,
+            vec![file_child],
+        );
+        let mut app = App::new(root, ScannerOptions::default());
+
+        // Vietnamese mode (default)
+        app.language = crate::i18n::Language::Vi;
+        let drilled = app.drill_down();
+        assert!(!drilled);
+        assert!(app.status_message.is_some());
+        let (vi_msg, _) = app.status_message.clone().unwrap();
+        assert!(vi_msg.contains("không thể đi vào"));
+
+        // Switch to English mode
+        app.language = crate::i18n::Language::En;
+        let drilled = app.drill_down();
+        assert!(!drilled);
+        assert!(app.status_message.is_some());
+        let (en_msg, _) = app.status_message.clone().unwrap();
+        assert!(en_msg.contains("is a single file, cannot enter"));
     }
 }

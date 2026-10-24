@@ -248,6 +248,42 @@ impl Language {
         }
     }
 
+    // Navigation feedback messages
+    pub fn drill_down_file_err(&self, name: &str) -> String {
+        match self {
+            Language::Vi => format!("'{}' là tệp đơn lẻ, không thể đi vào.", name),
+            Language::En => format!("'{}' is a single file, cannot enter.", name),
+        }
+    }
+
+    pub fn drill_down_empty_err(&self) -> &'static str {
+        match self {
+            Language::Vi => "Thư mục trống, không có công trình bên trong.",
+            Language::En => "Empty directory, no buildings inside.",
+        }
+    }
+
+    pub fn drill_down_entered(&self, name: &str) -> String {
+        match self {
+            Language::Vi => format!("Đã bước vào công trình: {}", name),
+            Language::En => format!("Entered building: {}", name),
+        }
+    }
+
+    pub fn navigate_up_success(&self) -> &'static str {
+        match self {
+            Language::Vi => "Đã lùi về con phố cha.",
+            Language::En => "Returned to parent avenue.",
+        }
+    }
+
+    pub fn zoning_switched(&self, mode_label: &str) -> String {
+        match self {
+            Language::Vi => format!("Đã quy hoạch lại: {}", mode_label),
+            Language::En => format!("Zoning reorganized: {}", mode_label),
+        }
+    }
+
     // Demolition Modal
     pub fn demolish_modal_title(&self) -> &'static str {
         match self {
@@ -390,5 +426,29 @@ mod tests {
             Language::En.demolish_modal_title()
         );
         assert_ne!(Language::Vi.protected_tag(), Language::En.protected_tag());
+    }
+
+    #[test]
+    fn test_navigation_feedback_bilingual() {
+        assert_ne!(
+            Language::Vi.drill_down_file_err("file.txt"),
+            Language::En.drill_down_file_err("file.txt")
+        );
+        assert_ne!(
+            Language::Vi.drill_down_empty_err(),
+            Language::En.drill_down_empty_err()
+        );
+        assert_ne!(
+            Language::Vi.drill_down_entered("folder"),
+            Language::En.drill_down_entered("folder")
+        );
+        assert_ne!(
+            Language::Vi.navigate_up_success(),
+            Language::En.navigate_up_success()
+        );
+        assert_ne!(
+            Language::Vi.zoning_switched("Mode"),
+            Language::En.zoning_switched("Mode")
+        );
     }
 }

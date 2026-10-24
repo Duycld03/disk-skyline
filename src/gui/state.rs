@@ -1,6 +1,7 @@
 use crate::app::App;
 use crate::skyline::calculate_building_height;
 use macroquad::prelude::*;
+use macroquad::text::Font;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
@@ -79,6 +80,7 @@ pub struct GuiApp {
     pub modal: Option<GuiDemolishModal>,
     pub banner_message: Option<(String, bool, f32)>, // (msg, is_error, timer)
     pub is_fullscreen: bool,
+    pub font: Option<Font>,
 }
 
 impl GuiApp {
@@ -134,6 +136,7 @@ impl GuiApp {
             modal: None,
             banner_message: None,
             is_fullscreen: false,
+            font: None,
         }
     }
 
