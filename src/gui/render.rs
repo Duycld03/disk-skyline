@@ -497,35 +497,54 @@ pub fn render_rpg_hud(
         let cat_col = category_color(cat);
 
         // Building Name & Badge
-        let name_str = format!("CÔNG TRÌNH: {}", node.name);
+        let name_prefix = if lang == Language::Vi {
+            "CÔNG TRÌNH: "
+        } else {
+            "BUILDING: "
+        };
+        let name_str = format!("{}{}", name_prefix, node.name);
         draw_text(&name_str, 24.0, card_y + 26.0, 18.0, WHITE);
 
-        // Category Badge
+        // Category Badge with dynamic width
         let cat_label = cat.display_label_lang(lang);
-        draw_rectangle(24.0, card_y + 35.0, 180.0, 20.0, cat_col);
+        let badge_dim = measure_text(cat_label, None, 13, 1.0);
+        let badge_w = (badge_dim.width + 18.0).max(120.0);
+        draw_rectangle(24.0, card_y + 35.0, badge_w, 20.0, cat_col);
         draw_text(
             cat_label,
-            30.0,
-            card_y + 50.0,
+            32.0,
+            card_y + 49.0,
             13.0,
             Color::new(0.05, 0.05, 0.05, 1.0),
         );
 
-        // Size & Items info
-        let size_str = format!("Dung lượng: {}", format_bytes(node.size));
+        // Size & Items info dynamically positioned after badge
+        let size_str = if lang == Language::Vi {
+            format!("Dung lượng: {}", format_bytes(node.size))
+        } else {
+            format!("Size: {}", format_bytes(node.size))
+        };
+        let size_x = 24.0 + badge_w + 18.0;
         draw_text(
             &size_str,
-            220.0,
+            size_x,
             card_y + 50.0,
             15.0,
             Color::new(0.9, 0.9, 0.9, 1.0),
         );
 
+        let size_dim = measure_text(&size_str, None, 15, 1.0);
+        let next_x = size_x + size_dim.width + 24.0;
+
         if node.is_dir {
-            let child_str = format!("Quy mô: {} công trình con", node.children.len());
+            let child_str = if lang == Language::Vi {
+                format!("Quy mô: {} công trình con", node.children.len())
+            } else {
+                format!("Scale: {} sub-buildings", node.children.len())
+            };
             draw_text(
                 &child_str,
-                420.0,
+                next_x,
                 card_y + 50.0,
                 15.0,
                 Color::new(0.7, 0.85, 1.0, 1.0),
@@ -533,9 +552,14 @@ pub fn render_rpg_hud(
         }
 
         if node.is_system_protected {
+            let lock_notice = if lang == Language::Vi {
+                "[KHÓA BẢO VỆ HỆ THỐNG - KHÔNG THỂ PHÁ DỠ]"
+            } else {
+                "[SYSTEM PROTECTED LOCK - DEMOLITION FORBIDDEN]"
+            };
             draw_text(
-                "[KHÓA BẢO VỆ HỆ THỐNG - KHÔNG THỂ PHÁ DỠ]",
-                640.0,
+                lock_notice,
+                next_x + 220.0,
                 card_y + 50.0,
                 14.0,
                 Color::new(1.0, 0.3, 0.3, 1.0),
