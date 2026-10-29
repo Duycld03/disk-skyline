@@ -628,6 +628,99 @@ pub fn probe_tmp_directory() -> Option<CleanableTarget> {
     }
 }
 
+/// Protected application prefixes whose ~/snap/<app> profiles must NEVER be deleted
+/// by automated cleaners under any circumstances (browsers, password managers, wallets, DB clients).
+pub(crate) const PROTECTED_SNAP_APPS: &[&str] = &[
+    "brave",
+    "chromium",
+    "firefox",
+    "chrome",
+    "google-chrome",
+    "edge",
+    "microsoft-edge",
+    "opera",
+    "vivaldi",
+    "tor-browser",
+    "bitwarden",
+    "keepassxc",
+    "dbeaver",
+    "authy",
+];
+
+/// Checks if an application name matches any protected snap profile prefix
+pub(crate) fn is_protected_snap_app(app_name: &str) -> bool {
+    let lower = app_name.to_lowercase();
+    PROTECTED_SNAP_APPS
+        .iter()
+        .any(|&prefix| lower == prefix || lower.starts_with(prefix))
+}
+
+/// Safely finds truly obsolete numeric revisions for a single snap application.
+/// Returns an empty list if current target does not exist, is uninitialized,
+/// if the app is protected, or if only a single numeric revision exists.
+pub(crate) fn find_obsolete_revisions_for_app(app_path: &Path, app_name: &str) -> Vec<PathBuf> {
+    if is_protected_snap_app(app_name) {
+        return Vec::new();
+    }
+
+    // 1. Current symlink must exist and point to valid numeric revision
+    let current_target_name = match std::fs::read_link(app_path.join("current")) {
+        Ok(p) => match p.file_name().and_then(|f| f.to_str()) {
+            Some(s) if !s.is_empty() && s.chars().all(|c| c.is_ascii_digit()) => s.to_string(),
+            _ => return Vec::new(),
+        },
+        Err(_) => return Vec::new(),
+    };
+
+    let current_rev_num = match current_target_name.parse::<u64>() {
+        Ok(n) => n,
+        Err(_) => return Vec::new(),
+    };
+
+    // 2. Target of current MUST exist on disk and be an initialized non-empty directory
+    let current_path = app_path.join(&current_target_name);
+    if !current_path.is_dir() || calculate_dir_size(&current_path) == 0 {
+        return Vec::new();
+    }
+
+    // 3. Scan numeric revision directories
+    let mut numeric_dirs: Vec<(u64, PathBuf)> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(app_path) {
+        for entry in entries.flatten() {
+            if let Ok(ft) = entry.file_type() {
+                if !ft.is_dir() || ft.is_symlink() {
+                    continue;
+                }
+                let name = entry.file_name().to_string_lossy().to_string();
+                if !name.is_empty() && name.chars().all(|c| c.is_ascii_digit()) {
+                    if let Ok(num) = name.parse::<u64>() {
+                        numeric_dirs.push((num, entry.path()));
+                    }
+                }
+            }
+        }
+    }
+
+    // 4. If <= 1 numeric revisions exist, it is the sole surviving data copy. Never delete.
+    if numeric_dirs.len() <= 1 {
+        return Vec::new();
+    }
+
+    let max_existing_rev = match numeric_dirs.iter().map(|(num, _)| *num).max() {
+        Some(m) => m,
+        None => return Vec::new(),
+    };
+
+    // 5. Must be strictly older than current, not the max existing revision, and non-empty
+    numeric_dirs
+        .into_iter()
+        .filter(|(num, path)| {
+            *num < current_rev_num && *num != max_existing_rev && calculate_dir_size(path) > 0
+        })
+        .map(|(_, path)| path)
+        .collect()
+}
+
 /// Probe Snap obsolete user profiles in ~/snap/<app>/<old_rev>
 pub fn probe_snap_user_profiles() -> Option<CleanableTarget> {
     let home = std::env::var("HOME").ok().map(PathBuf::from)?;
@@ -649,36 +742,12 @@ pub(crate) fn probe_snap_user_profiles_in(snap_dir: &Path) -> Option<CleanableTa
                 continue;
             }
 
-            let current_target_name = std::fs::read_link(app_path.join("current"))
-                .ok()
-                .and_then(|p| p.file_name().map(|f| f.to_string_lossy().to_string()));
-
-            if let Ok(rev_entries) = std::fs::read_dir(&app_path) {
-                for rev_entry in rev_entries.flatten() {
-                    let file_type = match rev_entry.file_type() {
-                        Ok(ft) => ft,
-                        Err(_) => continue,
-                    };
-                    if !file_type.is_dir() || file_type.is_symlink() {
-                        continue;
-                    }
-
-                    let dir_name = rev_entry.file_name().to_string_lossy().to_string();
-                    if dir_name.is_empty() || !dir_name.chars().all(|c| c.is_ascii_digit()) {
-                        continue;
-                    }
-
-                    if Some(&dir_name) == current_target_name.as_ref() {
-                        continue;
-                    }
-
-                    let p = rev_entry.path();
-                    let size = calculate_dir_size(&p);
-                    if size > 0 {
-                        total_size = total_size.saturating_add(size);
-                        obsolete_dirs.push(p);
-                    }
-                }
+            let app_name = app_entry.file_name().to_string_lossy().to_string();
+            let app_obsolete = find_obsolete_revisions_for_app(&app_path, &app_name);
+            for p in app_obsolete {
+                let s = calculate_dir_size(&p);
+                total_size = total_size.saturating_add(s);
+                obsolete_dirs.push(p);
             }
         }
     }
@@ -697,6 +766,7 @@ pub(crate) fn probe_snap_user_profiles_in(snap_dir: &Path) -> Option<CleanableTa
         None
     }
 }
+
 
 /// Probe Systemd journal logs exceeding 100MB
 pub fn probe_system_journal() -> Option<CleanableTarget> {
@@ -1074,6 +1144,131 @@ mod tests {
             }
         }
         let _ = std::fs::remove_dir_all(&temp_base);
+    }
+
+    #[test]
+    fn test_probe_snap_user_profiles_protects_sensitive_apps() {
+        let temp_base = std::env::temp_dir().join("test_snap_protected_apps");
+        let brave_dir = temp_base.join("brave");
+        let rev1 = brave_dir.join("698");
+        let rev2 = brave_dir.join("700");
+        let _ = std::fs::create_dir_all(&rev1);
+        let _ = std::fs::create_dir_all(&rev2);
+        let _ = std::fs::write(rev1.join("history"), vec![1u8; 1024]);
+        let _ = std::fs::write(rev2.join("history"), vec![1u8; 1024]);
+
+        #[cfg(unix)]
+        let _ = std::os::unix::fs::symlink("700", brave_dir.join("current"));
+
+        let target = probe_snap_user_profiles_in(&temp_base);
+        assert!(
+            target.is_none(),
+            "Protected browser profiles like Brave must never be targeted"
+        );
+        let _ = std::fs::remove_dir_all(&temp_base);
+    }
+
+    #[test]
+    fn test_probe_snap_user_profiles_skips_when_current_target_missing_on_disk() {
+        let temp_base = std::env::temp_dir().join("test_snap_missing_current");
+        let app_dir = temp_base.join("otherapp");
+        let rev1 = app_dir.join("698");
+        let _ = std::fs::create_dir_all(&rev1);
+        let _ = std::fs::write(rev1.join("data.txt"), vec![1u8; 1024]);
+
+        // current points to 700 which DOES NOT exist on disk yet
+        #[cfg(unix)]
+        let _ = std::os::unix::fs::symlink("700", app_dir.join("current"));
+
+        let target = probe_snap_user_profiles_in(&temp_base);
+        assert!(
+            target.is_none(),
+            "Must never delete old revision when new current revision has not been created on disk"
+        );
+        let _ = std::fs::remove_dir_all(&temp_base);
+    }
+
+    #[test]
+    fn test_probe_snap_user_profiles_skips_when_current_target_is_empty() {
+        let temp_base = std::env::temp_dir().join("test_snap_empty_current");
+        let app_dir = temp_base.join("otherapp");
+        let rev1 = app_dir.join("698");
+        let rev2 = app_dir.join("700");
+        let _ = std::fs::create_dir_all(&rev1);
+        let _ = std::fs::create_dir_all(&rev2); // rev2 is empty (0 bytes)
+        let _ = std::fs::write(rev1.join("data.txt"), vec![1u8; 1024]);
+
+        #[cfg(unix)]
+        let _ = std::os::unix::fs::symlink("700", app_dir.join("current"));
+
+        let target = probe_snap_user_profiles_in(&temp_base);
+        assert!(
+            target.is_none(),
+            "Must never delete old revision when current revision folder is empty/uninitialized"
+        );
+        let _ = std::fs::remove_dir_all(&temp_base);
+    }
+
+    #[test]
+    fn test_probe_snap_user_profiles_skips_single_surviving_revision() {
+        let temp_base = std::env::temp_dir().join("test_snap_single_rev");
+        let app_dir = temp_base.join("otherapp");
+        let rev1 = app_dir.join("101");
+        let _ = std::fs::create_dir_all(&rev1);
+        let _ = std::fs::write(rev1.join("data.txt"), vec![1u8; 1024]);
+
+        #[cfg(unix)]
+        let _ = std::os::unix::fs::symlink("101", app_dir.join("current"));
+
+        let target = probe_snap_user_profiles_in(&temp_base);
+        assert!(
+            target.is_none(),
+            "Must never delete when only 1 revision directory exists on disk"
+        );
+        let _ = std::fs::remove_dir_all(&temp_base);
+    }
+
+    #[test]
+    fn test_probe_snap_user_profiles_skips_when_revision_newer_than_current() {
+        let temp_base = std::env::temp_dir().join("test_snap_newer_rev");
+        let app_dir = temp_base.join("idea");
+        let rev1 = app_dir.join("132");
+        let _ = std::fs::create_dir_all(&rev1);
+        let _ = std::fs::write(rev1.join("config.xml"), vec![1u8; 1024]);
+
+        // current points to older 60 (classic snap quirk), existing folder on disk is 132
+        #[cfg(unix)]
+        let _ = std::os::unix::fs::symlink("60", app_dir.join("current"));
+
+        let target = probe_snap_user_profiles_in(&temp_base);
+        assert!(
+            target.is_none(),
+            "Must never delete revision newer than current link"
+        );
+        let _ = std::fs::remove_dir_all(&temp_base);
+    }
+
+    #[test]
+    fn test_probe_snap_user_profiles_real_home_safety() {
+        if let Ok(home) = std::env::var("HOME") {
+            let snap_path = PathBuf::from(home).join("snap");
+            if snap_path.is_dir() {
+                if let Some(target) = probe_snap_user_profiles_in(&snap_path) {
+                    match target.purge_action {
+                        PurgeAction::MultiDirectoryDelete(dirs) => {
+                            for d in dirs {
+                                let path_str = d.to_string_lossy().to_lowercase();
+                                assert!(!path_str.contains("brave"), "Must never target brave: {:?}", d);
+                                assert!(!path_str.contains("intellij"), "Must never target intellij: {:?}", d);
+                                assert!(!path_str.contains("rider"), "Must never target rider: {:?}", d);
+                                assert!(!path_str.contains("bitwarden"), "Must never target bitwarden: {:?}", d);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
     }
 
     #[test]
