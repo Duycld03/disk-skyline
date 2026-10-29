@@ -1,6 +1,6 @@
 use super::draw::{category_color, draw_text_f, measure_text_f};
 use crate::app::App;
-use crate::gui::state::GuiDemolishModal;
+use crate::gui::state::{GuiDemolishModal, GuiSudoModal};
 use crate::i18n::Language;
 use crate::model::{format_bytes, BuildingNode};
 use macroquad::prelude::*;
@@ -43,7 +43,15 @@ pub fn render_rpg_hud(
         font,
     );
 
-    let trail = app.breadcrumbs().join(" / ");
+    let trail = if app.is_in_scrapyard() {
+        if lang == Language::Vi {
+            "ĐẠI LỘ PHẾ LIỆU".to_string()
+        } else {
+            "SCRAPYARD AVENUE".to_string()
+        }
+    } else {
+        app.breadcrumbs().join(" / ")
+    };
     let avenue_str = lang.avenue_title(&trail);
     draw_text_f(
         &avenue_str,
@@ -61,7 +69,13 @@ pub fn render_rpg_hud(
     let bar_y = 20.0;
 
     let root_size = app.root_node.size;
-    let capacity_label = if lang == Language::Vi {
+    let capacity_label = if app.is_in_scrapyard() {
+        if lang == Language::Vi {
+            format!("Tổng rác phát hiện: {}", format_bytes(root_size))
+        } else {
+            format!("Detected Junk: {}", format_bytes(root_size))
+        }
+    } else if lang == Language::Vi {
         format!("Tổng dung lượng: {}", format_bytes(root_size))
     } else {
         format!("Total Capacity: {}", format_bytes(root_size))
@@ -268,72 +282,186 @@ pub fn render_demolish_modal(
     // Dim background
     draw_rectangle(0.0, 0.0, screen_w, screen_h, Color::new(0.0, 0.0, 0.0, 0.7));
 
-    let mw = 540.0;
-    let mh = 200.0;
+    let mw = 620.0;
+    let mh = 230.0;
     let mx = (screen_w - mw) / 2.0;
     let my = (screen_h - mh) / 2.0;
 
     // Modal background
     draw_rectangle(mx, my, mw, mh, Color::new(0.12, 0.08, 0.08, 0.98));
     draw_rectangle_lines(mx, my, mw, mh, 2.5, Color::new(0.9, 0.2, 0.2, 1.0));
+    draw_rectangle(mx + 2.0, my + 2.0, mw - 4.0, 42.0, Color::new(0.3, 0.1, 0.1, 0.5));
 
     // Title
     let title = lang.demolish_modal_title();
     draw_text_f(
         title,
         mx + 25.0,
-        my + 36.0,
+        my + 30.0,
         18.0,
-        Color::new(1.0, 0.3, 0.3, 1.0),
+        Color::new(1.0, 0.35, 0.35, 1.0),
         font,
     );
 
-    let info = if lang == Language::Vi {
-        format!(
-            "Bạn có chắc muốn san phẳng: {} ({})?",
-            modal.target_name, modal.target_size_formatted
-        )
+    let q_intro = if lang == Language::Vi {
+        "Bạn có chắc muốn san phẳng mục này?"
     } else {
-        format!(
-            "Are you sure you want to demolish: {} ({})?",
-            modal.target_name, modal.target_size_formatted
-        )
+        "Are you sure you want to demolish this target?"
     };
-    draw_text_f(&info, mx + 25.0, my + 80.0, 16.0, WHITE, font);
+    draw_text_f(q_intro, mx + 25.0, my + 68.0, 14.0, Color::new(0.8, 0.8, 0.8, 1.0), font);
+
+    let target_display = format!("{} ({})", modal.target_name, modal.target_size_formatted);
+    draw_text_f(&target_display, mx + 25.0, my + 94.0, 16.0, Color::new(1.0, 0.9, 0.3, 1.0), font);
 
     let warn = lang.demolish_warning();
     draw_text_f(
         warn,
         mx + 25.0,
-        my + 112.0,
+        my + 126.0,
         13.0,
-        Color::new(0.9, 0.7, 0.2, 1.0),
+        Color::new(0.95, 0.65, 0.2, 1.0),
         font,
     );
 
-    // Buttons
-    draw_rectangle(
-        mx + 40.0,
-        my + 140.0,
-        200.0,
-        34.0,
-        Color::new(0.85, 0.15, 0.15, 1.0),
-    );
+    // Centered Buttons
+    let btn_w = 230.0;
+    let btn_h = 36.0;
+    let gap = 24.0;
+    let total_btn_w = btn_w * 2.0 + gap;
+    let btn1_x = mx + (mw - total_btn_w) / 2.0;
+    let btn2_x = btn1_x + btn_w + gap;
+    let btn_y = my + mh - 52.0;
+
     let (confirm_btn, cancel_btn) = if lang == Language::Vi {
         ("[Y] Tiến hành phá dỡ", "[N/Esc] Hủy bỏ")
     } else {
         ("[Y] Confirm Demolition", "[N/Esc] Cancel")
     };
-    draw_text_f(confirm_btn, mx + 50.0, my + 162.0, 15.0, WHITE, font);
 
-    draw_rectangle(
-        mx + 300.0,
-        my + 140.0,
-        180.0,
-        34.0,
-        Color::new(0.25, 0.28, 0.35, 1.0),
+    draw_rectangle(btn1_x, btn_y, btn_w, btn_h, Color::new(0.85, 0.15, 0.15, 1.0));
+    let c_w = measure_text_f(confirm_btn, 14.0, font);
+    draw_text_f(confirm_btn, btn1_x + (btn_w - c_w) / 2.0, btn_y + 23.0, 14.0, WHITE, font);
+
+    draw_rectangle(btn2_x, btn_y, btn_w, btn_h, Color::new(0.25, 0.28, 0.35, 1.0));
+    let n_w = measure_text_f(cancel_btn, 14.0, font);
+    draw_text_f(cancel_btn, btn2_x + (btn_w - n_w) / 2.0, btn_y + 23.0, 14.0, WHITE, font);
+}
+
+pub fn render_sudo_modal(
+    modal: &GuiSudoModal,
+    lang: Language,
+    screen_w: f32,
+    screen_h: f32,
+    font: Option<&Font>,
+) {
+    // Dim background
+    draw_rectangle(0.0, 0.0, screen_w, screen_h, Color::new(0.0, 0.0, 0.0, 0.75));
+
+    let mw = 620.0;
+    let mh = 250.0;
+    let mx = (screen_w - mw) / 2.0;
+    let my = (screen_h - mh) / 2.0;
+    // Modal card background & border
+    draw_rectangle(mx, my, mw, mh, Color::new(0.12, 0.08, 0.06, 0.98));
+    draw_rectangle_lines(mx, my, mw, mh, 2.5, Color::new(0.95, 0.45, 0.15, 1.0));
+    draw_rectangle(mx + 2.0, my + 2.0, mw - 4.0, 44.0, Color::new(0.25, 0.10, 0.08, 0.6));
+
+    // Title
+    let title = if lang == Language::Vi {
+        "🛡️ XÁC THỰC QUYỀN SUDO"
+    } else {
+        "🛡️ ADMINISTRATOR ELEVATION REQUIRED"
+    };
+    draw_text_f(
+        title,
+        mx + 25.0,
+        my + 32.0,
+        18.0,
+        Color::new(1.0, 0.4, 0.2, 1.0),
+        font,
     );
-    draw_text_f(cancel_btn, mx + 345.0, my + 162.0, 15.0, WHITE, font);
+
+    // Instruction
+    let instruction_prefix = if lang == Language::Vi {
+        "Yêu cầu quyền Superuser để gỡ bỏ:"
+    } else {
+        "Superuser elevation required to remove:"
+    };
+    draw_text_f(instruction_prefix, mx + 25.0, my + 64.0, 14.0, Color::new(0.8, 0.8, 0.8, 1.0), font);
+
+    let target_display = format!("{} ({})", modal.target_name, modal.target_size_formatted);
+    draw_text_f(&target_display, mx + 25.0, my + 86.0, 15.0, Color::new(1.0, 0.85, 0.25, 1.0), font);
+
+    // Password input box
+    let box_x = mx + 25.0;
+    let box_y = my + 106.0;
+    let box_w = mw - 50.0;
+    let box_h = 36.0;
+
+    draw_rectangle(box_x, box_y, box_w, box_h, Color::new(0.08, 0.07, 0.09, 1.0));
+    draw_rectangle_lines(box_x, box_y, box_w, box_h, 1.5, Color::new(0.85, 0.5, 0.2, 1.0));
+
+    let masked: String = "*".repeat(modal.password_buffer.len());
+    if masked.is_empty() {
+        let placeholder = if lang == Language::Vi {
+            "[Nhập mật khẩu sudo...]"
+        } else {
+            "[Enter sudo password...]"
+        };
+        draw_text_f(
+            placeholder,
+            box_x + 12.0,
+            box_y + 24.0,
+            14.0,
+            Color::new(0.5, 0.5, 0.5, 0.8),
+            font,
+        );
+    } else {
+        draw_text_f(
+            &masked,
+            box_x + 12.0,
+            box_y + 24.0,
+            16.0,
+            Color::new(1.0, 0.9, 0.3, 1.0),
+            font,
+        );
+    }
+
+    // Error banner if present
+    if let Some(err) = &modal.error_message {
+        let err_text = format!("⚠️ {}", err);
+        draw_text_f(
+            &err_text,
+            mx + 25.0,
+            my + 158.0,
+            13.0,
+            Color::new(1.0, 0.25, 0.25, 1.0),
+            font,
+        );
+    }
+
+    // Buttons / Key hints
+    let btn_w = 230.0;
+    let btn_h = 36.0;
+    let gap = 24.0;
+    let total_btn_w = btn_w * 2.0 + gap;
+    let btn1_x = mx + (mw - total_btn_w) / 2.0;
+    let btn2_x = btn1_x + btn_w + gap;
+    let btn_y = my + mh - 50.0;
+
+    let (confirm_btn, cancel_btn) = if lang == Language::Vi {
+        ("[Enter] Xác nhận", "[Esc] Hủy bỏ")
+    } else {
+        ("[Enter] Confirm", "[Esc] Cancel")
+    };
+
+    draw_rectangle(btn1_x, btn_y, btn_w, btn_h, Color::new(0.85, 0.3, 0.15, 1.0));
+    let c_w = measure_text_f(confirm_btn, 14.0, font);
+    draw_text_f(confirm_btn, btn1_x + (btn_w - c_w) / 2.0, btn_y + 23.0, 14.0, WHITE, font);
+
+    draw_rectangle(btn2_x, btn_y, btn_w, btn_h, Color::new(0.25, 0.28, 0.35, 1.0));
+    let n_w = measure_text_f(cancel_btn, 14.0, font);
+    draw_text_f(cancel_btn, btn2_x + (btn_w - n_w) / 2.0, btn_y + 23.0, 14.0, WHITE, font);
 }
 
 pub fn render_search_overlay(

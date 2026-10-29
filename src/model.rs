@@ -119,6 +119,7 @@ pub struct BuildingNode {
     pub is_dir: bool,
     pub is_hidden: bool,
     pub is_system_protected: bool,
+    pub requires_sudo: bool,
     pub size: u64,
     pub file_type: BuildingCategory,
     pub children: Vec<BuildingNode>,
@@ -143,6 +144,7 @@ impl BuildingNode {
             is_dir,
             is_hidden,
             is_system_protected,
+            requires_sudo: false,
             size,
             file_type,
             children,
@@ -167,6 +169,7 @@ impl BuildingNode {
             is_dir,
             is_hidden,
             is_system_protected,
+            requires_sudo: false,
             size,
             file_type,
             children,
@@ -228,7 +231,8 @@ impl BuildingNode {
                 path: PathBuf::from(format!("//scrapyard/{}", target.id)),
                 is_dir: false,
                 is_hidden: false,
-                is_system_protected: target.requires_sudo,
+                is_system_protected: false,
+                requires_sudo: target.requires_sudo,
                 size: target.size,
                 file_type: BuildingCategory::Junk,
                 children: Vec::new(),
@@ -243,6 +247,7 @@ impl BuildingNode {
             is_dir: true,
             is_hidden: false,
             is_system_protected: false,
+            requires_sudo: false,
             size: total_size,
             file_type: BuildingCategory::Junk,
             children,
@@ -520,5 +525,23 @@ mod tests {
             vec![],
         );
         assert!(!unknown.is_stale());
+    }
+
+    #[test]
+    fn test_scrapyard_avenue_requires_sudo_decoupling() {
+        let target = crate::cleaner::CleanableTarget {
+            id: "snap_test".into(),
+            name: "Snap Inactive Test".into(),
+            size: 500_000,
+            description: "Test".into(),
+            purge_action: crate::cleaner::PurgeAction::Command("echo".into(), vec!["test".into()]),
+            requires_sudo: true,
+        };
+
+        let avenue = BuildingNode::build_scrapyard_avenue(&[target]);
+        assert_eq!(avenue.children.len(), 1);
+        let child = &avenue.children[0];
+        assert!(child.requires_sudo);
+        assert!(!child.is_system_protected);
     }
 }

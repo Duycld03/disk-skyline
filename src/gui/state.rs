@@ -71,6 +71,15 @@ pub struct GuiDemolishModal {
     pub is_protected: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GuiSudoModal {
+    pub target_index: Option<usize>,
+    pub target_name: String,
+    pub target_size_formatted: String,
+    pub password_buffer: String,
+    pub error_message: Option<String>,
+}
+
 pub struct GuiApp {
     pub app: App,
     pub avatar: Avatar,
@@ -78,6 +87,7 @@ pub struct GuiApp {
     pub particles: Vec<Particle>,
     pub stars: Vec<Star>,
     pub modal: Option<GuiDemolishModal>,
+    pub sudo_modal: Option<GuiSudoModal>,
     pub banner_message: Option<(String, bool, f32)>, // (msg, is_error, timer)
     pub is_fullscreen: bool,
     pub font: Option<Font>,
@@ -135,6 +145,7 @@ impl GuiApp {
             particles: Vec::new(),
             stars,
             modal: None,
+            sudo_modal: None,
             banner_message: None,
             is_fullscreen: false,
             font: None,
@@ -349,6 +360,7 @@ mod tests {
             is_dir: false,
             is_hidden: false,
             is_system_protected: false,
+            requires_sudo: false,
             size: 10_000,
             file_type: BuildingCategory::Code,
             children: vec![],
@@ -361,6 +373,7 @@ mod tests {
             is_dir: true,
             is_hidden: false,
             is_system_protected: false,
+            requires_sudo: false,
             size: 50_000,
             file_type: BuildingCategory::Directory,
             children: vec![],
@@ -373,6 +386,7 @@ mod tests {
             is_dir: true,
             is_hidden: false,
             is_system_protected: false,
+            requires_sudo: false,
             size: 60_000,
             file_type: BuildingCategory::Directory,
             children: vec![child1, child2],
@@ -478,5 +492,27 @@ mod tests {
             gui.modal, None,
             "Walking right must never trigger demolition modal"
         );
+    }
+
+    #[test]
+    fn test_gui_sudo_modal_state() {
+        let mut gui = create_mock_gui_app();
+        assert!(gui.sudo_modal.is_none());
+
+        gui.sudo_modal = Some(GuiSudoModal {
+            target_index: Some(0),
+            target_name: "Snap Inactive".into(),
+            target_size_formatted: "150.0 MB".into(),
+            password_buffer: String::new(),
+            error_message: None,
+        });
+
+        assert!(gui.sudo_modal.is_some());
+        let modal = gui.sudo_modal.as_mut().unwrap();
+        assert_eq!(modal.target_index, Some(0));
+        modal.password_buffer.push_str("secret");
+        assert_eq!(modal.password_buffer, "secret");
+        modal.error_message = Some("Incorrect password".into());
+        assert_eq!(modal.error_message.as_deref(), Some("Incorrect password"));
     }
 }

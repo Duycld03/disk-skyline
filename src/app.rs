@@ -1,7 +1,9 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::path::PathBuf;
 
-use crate::demolish::{execute_demolition, DemolishAction, DemolishState};
+use crate::demolish::{
+    execute_demolition, DemolishAction, DemolishState, SudoAction, SudoModalState,
+};
 use crate::model::{BuildingNode, NavigationState};
 use crate::scanner::{scan_directory, ScannerOptions};
 use crate::skyline::SkylinePlacement;
@@ -13,6 +15,7 @@ pub struct App {
     pub status_message: Option<(String, bool)>, // (message, is_error)
     pub should_quit: bool,
     pub demolish_state: Option<DemolishState>,
+    pub sudo_modal_state: Option<SudoModalState>,
     pub language: crate::i18n::Language,
     pub search_query: Option<String>,
     pub pre_search_index: Option<usize>,
@@ -28,6 +31,7 @@ impl App {
             status_message: None,
             should_quit: false,
             demolish_state: None,
+            sudo_modal_state: None,
             language: crate::i18n::Language::default(),
             search_query: None,
             pre_search_index: None,
@@ -168,8 +172,8 @@ impl App {
         }
     }
 
-    pub fn execute_bulldozer(&mut self) -> Result<u64, std::io::Error> {
-        let freed = crate::demolish::execute_bulldozer_purge(&mut self.root_node)?;
+    pub fn execute_bulldozer(&mut self, sudo_password: Option<&str>) -> Result<u64, std::io::Error> {
+        let freed = crate::demolish::execute_bulldozer_purge(&mut self.root_node, sudo_password)?;
         self.nav.selected_index = 0;
         let bytes_str = crate::model::format_bytes(freed);
         self.status_message = Some((self.language.bulldozer_success(&bytes_str), false));
@@ -325,6 +329,93 @@ impl App {
             return;
         }
 
+        // If sudo password modal is active, delegate keys to sudo modal
+        if let Some(mut state) = self.sudo_modal_state.take() {
+            match state.handle_key(key) {
+                SudoAction::Pending => {
+                    self.sudo_modal_state = Some(state);
+                }
+                SudoAction::Cancelled => {
+                    if state.target_index.is_none() {
+                        let _ = self.execute_bulldozer(None);
+                    } else {
+                        self.status_message = Some((self.language.demolish_cancelled().into(), false));
+                    }
+                    self.sudo_modal_state = None;
+                }
+                SudoAction::Submit(password) => {
+                    if let Some(selected_idx) = state.target_index {
+                        let target_name = state.target_name.clone();
+
+                        let purge_action = {
+                            let curr = self.current_node();
+                            if selected_idx < curr.children.len() {
+                                curr.children[selected_idx].purge_action.clone()
+                            } else {
+                                None
+                            }
+                        };
+
+                        let res = if let Some(action) = purge_action {
+                            action.execute_with_sudo(&password)
+                        } else {
+                            Err("Không có thao tác dọn dẹp nào".to_string())
+                        };
+
+                        match res {
+                            Ok(()) => {
+                                let curr = self.current_node_mut();
+                                let freed = if selected_idx < curr.children.len() {
+                                    let removed = curr.children.remove(selected_idx);
+                                    curr.size = curr.size.saturating_sub(removed.size);
+                                    removed.size
+                                } else {
+                                    state.target_size
+                                };
+                                let remaining_count = curr.children.len();
+                                if self.nav.selected_index >= remaining_count {
+                                    self.nav.selected_index = remaining_count.saturating_sub(1);
+                                }
+                                let msg = if self.language == crate::i18n::Language::Vi {
+                                    format!(
+                                        "Đã phá dỡ thành công '{}', giải phóng {}!",
+                                        target_name,
+                                        crate::model::format_bytes(freed)
+                                    )
+                                } else {
+                                    format!(
+                                        "Successfully demolished '{}', freed {}!",
+                                        target_name,
+                                        crate::model::format_bytes(freed)
+                                    )
+                                };
+                                self.status_message = Some((msg, false));
+                                self.sudo_modal_state = None;
+                            }
+                            Err(e) => {
+                                state.error_message = Some(e);
+                                state.password_buffer.clear();
+                                self.sudo_modal_state = Some(state);
+                            }
+                        }
+                    } else {
+                        // Bulldozer batch purge with sudo password
+                        match self.execute_bulldozer(Some(&password)) {
+                            Ok(_) => {
+                                self.sudo_modal_state = None;
+                            }
+                            Err(e) => {
+                                state.error_message = Some(e.to_string());
+                                state.password_buffer.clear();
+                                self.sudo_modal_state = Some(state);
+                            }
+                        }
+                    }
+                }
+            }
+            return;
+        }
+
         // If demolition modal is active, delegate keys to modal
         if let Some(mut state) = self.demolish_state.take() {
             match state.handle_key(key) {
@@ -404,6 +495,13 @@ impl App {
             | KeyCode::Char('D')
             | KeyCode::Delete => {
                 if let Some(child) = self.current_selected_child() {
+                    let requires_sudo = child.requires_sudo
+                        || child
+                            .purge_action
+                            .as_ref()
+                            .map(|a| a.requires_sudo())
+                            .unwrap_or(false);
+
                     if child.is_system_protected {
                         let notice = if self.is_in_scrapyard() {
                             if child.name.to_lowercase().contains("snap") {
@@ -426,6 +524,12 @@ impl App {
                             self.language.protected_rejection_notice().to_string()
                         };
                         self.status_message = Some((notice, true));
+                    } else if requires_sudo {
+                        self.sudo_modal_state = Some(SudoModalState::new_with_index(
+                            Some(self.nav.selected_index),
+                            child.name.clone(),
+                            child.size,
+                        ));
                     } else {
                         self.demolish_state = Some(DemolishState::new(child));
                     }
@@ -444,7 +548,25 @@ impl App {
                 self.toggle_scrapyard();
             }
             KeyCode::Char('c') | KeyCode::Char('C') if self.is_in_scrapyard() => {
-                let _ = self.execute_bulldozer();
+                let has_sudo = self.root_node.children.iter().any(|c| c.requires_sudo);
+                if has_sudo {
+                    let total_elevated: u64 = self.root_node.children.iter()
+                        .filter(|c| c.requires_sudo)
+                        .map(|c| c.size)
+                        .sum();
+                    let name = if self.language == crate::i18n::Language::Vi {
+                        "San phẳng toàn bộ (Bulldozer All)".to_string()
+                    } else {
+                        "Bulldozer All (Batch Purge)".to_string()
+                    };
+                    self.sudo_modal_state = Some(SudoModalState::new_with_index(
+                        None,
+                        name,
+                        total_elevated,
+                    ));
+                } else {
+                    let _ = self.execute_bulldozer(None);
+                }
             }
             _ => {}
         }
@@ -735,7 +857,7 @@ mod tests {
         assert!(app.root_node.name.contains("SCRAPYARD"));
 
         // Bulldozer purge executes cleanly
-        let res = app.execute_bulldozer();
+        let res = app.execute_bulldozer(None);
         assert!(res.is_ok());
 
         // Navigate up exits back to original filesystem tree
@@ -822,5 +944,172 @@ mod tests {
             "Notice must contain exact terminal command: {}",
             msg
         );
+    }
+
+    #[test]
+    fn test_scrapyard_sudo_modal_opens_and_submits() {
+        let temp_dir = std::env::temp_dir().join("test_app_sudo_modal_dir");
+        let _ = std::fs::create_dir_all(&temp_dir);
+
+        let mut sudo_junk = BuildingNode::new(
+            "Apt Cache".into(),
+            temp_dir.clone(),
+            true,
+            false,
+            3000,
+            vec![],
+        );
+        sudo_junk.is_system_protected = false;
+        sudo_junk.requires_sudo = true;
+        sudo_junk.purge_action = Some(crate::cleaner::PurgeAction::DirectoryDelete(
+            temp_dir.clone(),
+        ));
+
+        let root = BuildingNode::new(
+            "ĐẠI LỘ PHẾ LIỆU (SCRAPYARD)".into(),
+            PathBuf::from("//scrapyard"),
+            true,
+            false,
+            3000,
+            vec![sudo_junk],
+        );
+        let mut app = App::new(root, ScannerOptions::default());
+        app.saved_root_node = Some(BuildingNode::new(
+            "root".into(),
+            PathBuf::from("/"),
+            true,
+            false,
+            0,
+            vec![],
+        ));
+
+        // Press 'd'
+        let key_d = KeyEvent {
+            code: KeyCode::Char('d'),
+            modifiers: KeyModifiers::NONE,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        };
+        app.handle_key(key_d);
+
+        // Sudo modal must open, not blocked with notice
+        assert!(app.demolish_state.is_none());
+        assert!(app.sudo_modal_state.is_some());
+        let modal = app.sudo_modal_state.as_ref().unwrap();
+        assert_eq!(modal.target_name, "Apt Cache");
+
+        // Type 'a', 'b', 'c'
+        for c in ['a', 'b', 'c'] {
+            app.handle_key(KeyEvent {
+                code: KeyCode::Char(c),
+                modifiers: KeyModifiers::NONE,
+                kind: crossterm::event::KeyEventKind::Press,
+                state: crossterm::event::KeyEventState::NONE,
+            });
+        }
+        assert_eq!(
+            app.sudo_modal_state.as_ref().unwrap().password_buffer,
+            "abc"
+        );
+
+        // Press Enter (DirectoryDelete succeeds with dummy password)
+        let key_enter = KeyEvent {
+            code: KeyCode::Enter,
+            modifiers: KeyModifiers::NONE,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        };
+        app.handle_key(key_enter);
+
+        // Modal should close on success
+        assert!(app.sudo_modal_state.is_none());
+        assert_eq!(app.root_node.children.len(), 0);
+        assert_eq!(app.root_node.size, 0);
+        assert!(app.status_message.is_some());
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_scrapyard_sudo_modal_cancel() {
+        let mut sudo_junk = BuildingNode::new(
+            "Snap Debris".into(),
+            PathBuf::from("//scrapyard/snap"),
+            false,
+            false,
+            4000,
+            vec![],
+        );
+        sudo_junk.is_system_protected = false;
+        sudo_junk.requires_sudo = true;
+
+        let root = BuildingNode::new(
+            "ĐẠI LỘ PHẾ LIỆU (SCRAPYARD)".into(),
+            PathBuf::from("//scrapyard"),
+            true,
+            false,
+            4000,
+            vec![sudo_junk],
+        );
+        let mut app = App::new(root, ScannerOptions::default());
+
+        // Press 'x'
+        let key_x = KeyEvent {
+            code: KeyCode::Char('x'),
+            modifiers: KeyModifiers::NONE,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        };
+        app.handle_key(key_x);
+        assert!(app.sudo_modal_state.is_some());
+
+        // Press Esc to cancel
+        let key_esc = KeyEvent {
+            code: KeyCode::Esc,
+            modifiers: KeyModifiers::NONE,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        };
+        app.handle_key(key_esc);
+        assert!(app.sudo_modal_state.is_none());
+        assert!(app.status_message.is_some());
+    }
+
+    #[test]
+    fn test_scrapyard_bulldozer_prompts_sudo_modal_when_elevated_targets_exist() {
+        let mut elevated_target = BuildingNode::new(
+            "Snap Inactive Revisions".into(),
+            PathBuf::from("/var/lib/snapd/snaps/snap1.snap"),
+            false,
+            false,
+            5000,
+            vec![],
+        );
+        elevated_target.requires_sudo = true;
+        elevated_target.is_system_protected = false;
+        elevated_target.purge_action = Some(crate::cleaner::PurgeAction::Command("echo".into(), vec!["test".into()]));
+
+        let root = BuildingNode::new(
+            "ĐẠI LỘ PHẾ LIỆU (SCRAPYARD)".into(),
+            PathBuf::from("//scrapyard"),
+            true,
+            false,
+            5000,
+            vec![elevated_target],
+        );
+        let mut app = App::new(root, ScannerOptions::default());
+        assert!(app.is_in_scrapyard());
+
+        let key_c = KeyEvent {
+            code: KeyCode::Char('c'),
+            modifiers: KeyModifiers::NONE,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        };
+        app.handle_key(key_c);
+
+        assert!(app.sudo_modal_state.is_some(), "Bulldozer with elevated targets must trigger sudo modal");
+        let modal = app.sudo_modal_state.as_ref().unwrap();
+        assert!(modal.target_index.is_none(), "Bulldozer sudo modal has None target_index");
     }
 }

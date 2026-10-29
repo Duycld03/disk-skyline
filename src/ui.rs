@@ -61,6 +61,11 @@ pub fn draw_ui(app: &mut App, frame: &mut Frame) {
     if let Some(state) = &app.demolish_state {
         crate::demolish::render_demolish_modal(state, app.language, frame);
     }
+
+    // 6. Render Sudo Modal if active
+    if let Some(state) = &app.sudo_modal_state {
+        crate::demolish::render_sudo_modal(frame, state, frame.area(), app.language);
+    }
 }
 
 fn render_header(app: &App, area: Rect, frame: &mut Frame) {

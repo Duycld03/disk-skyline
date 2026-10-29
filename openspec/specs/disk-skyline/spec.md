@@ -54,10 +54,14 @@ The system SHALL classify any file or directory whose name starts with a dot (`.
 - **THEN** the system renders the item as a low-profile bunker with hazard or barbed wire patterns and displays a restricted badge in the HUD inspection pane
 
 ### Requirement: Safe Demolition with Two-Tier Confirmation
-The system SHALL provide a demolition command triggered by `d` or `Delete`. The system SHALL open a modal confirmation dialog detailing the item path and reclaimed space. The system SHALL require `y` for standard items and require typing `YES` for restricted items or items exceeding 1 GB before executing filesystem deletion.
+The system SHALL provide a demolition command triggered by `d`, `x`, or `Delete`. The system SHALL open a modal confirmation dialog detailing the item path and reclaimed space. The system SHALL require `y` for standard items and require typing `YES` for restricted items or items exceeding 1 GB before executing filesystem deletion.
 
 #### Scenario: Confirming standard file demolition
 - **WHEN** the user presses `d` on a standard file under 1 GB and confirms with `y`
+- **THEN** the system deletes the file from disk, removes the building from the in-memory tree, updates the parent directory size, and updates the skyline view without a full rescan
+
+#### Scenario: Confirming standard file demolition with x key
+- **WHEN** the user presses `x` on a standard file under 1 GB and confirms with `y`
 - **THEN** the system deletes the file from disk, removes the building from the in-memory tree, updates the parent directory size, and updates the skyline view without a full rescan
 
 #### Scenario: Confirming restricted item demolition

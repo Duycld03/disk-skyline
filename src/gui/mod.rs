@@ -4,7 +4,7 @@ pub mod state;
 use crate::app::App;
 use crate::demolish::execute_demolition;
 use crate::gui::render::*;
-use crate::gui::state::{Direction, GuiApp, GuiDemolishModal};
+use crate::gui::state::{Direction, GuiApp, GuiDemolishModal, GuiSudoModal};
 use crate::i18n::Language;
 use crate::model::format_bytes;
 use macroquad::prelude::*;
@@ -41,7 +41,87 @@ pub async fn run_gui(app: App) {
             .unwrap_or(screen_w);
 
         // 2. Handle Inputs
-        if let Some(modal) = gui.modal.clone() {
+        if let Some(modal) = gui.sudo_modal.clone() {
+            if is_key_pressed(KeyCode::Escape) {
+                while get_char_pressed().is_some() {}
+                if modal.target_index.is_none() {
+                    let _ = gui.app.execute_bulldozer(None);
+                    if let Some((msg, is_err)) = gui.app.status_message.take() {
+                        gui.banner_message = Some((msg, is_err, 3.5));
+                    }
+                } else {
+                    let cancel_msg = if gui.app.language == Language::Vi {
+                        "Đã hủy bỏ xác thực sudo.".to_string()
+                    } else {
+                        "Sudo elevation cancelled.".to_string()
+                    };
+                    gui.banner_message = Some((cancel_msg, false, 2.0));
+                }
+                gui.sudo_modal = None;
+            } else if is_key_pressed(KeyCode::Enter) {
+                while get_char_pressed().is_some() {}
+                let password = modal.password_buffer.clone();
+
+                if let Some(target_idx) = modal.target_index {
+                    let res = handle_sudo_modal_submit(&mut gui, target_idx, &password);
+                    if res.is_ok() {
+                        if let Some(p) = placements.iter().find(|pl| pl.node_index == target_idx) {
+                            let ground = GuiApp::ground_y(screen_h);
+                            let top_y = ground - p.height;
+                            gui.spawn_demolition_particles(
+                                p.x,
+                                top_y,
+                                p.width,
+                                p.height,
+                                Color::new(0.95, 0.45, 0.15, 1.0),
+                            );
+                        }
+                    }
+                } else {
+                    match gui.app.execute_bulldozer(Some(&password)) {
+                        Ok(_) => {
+                            for p in &placements {
+                                let ground = GuiApp::ground_y(screen_h);
+                                let top_y = ground - p.height;
+                                gui.spawn_demolition_particles(
+                                    p.x,
+                                    top_y,
+                                    p.width,
+                                    p.height,
+                                    Color::new(0.85, 0.45, 0.18, 1.0),
+                                );
+                            }
+                            gui.avatar.x = GuiApp::STREET_MARGIN_LEFT;
+                            gui.avatar.vx = 0.0;
+                            gui.camera_x = 0.0;
+                            if let Some((msg, is_err)) = gui.app.status_message.take() {
+                                gui.banner_message = Some((msg, is_err, 3.5));
+                            }
+                            gui.sudo_modal = None;
+                        }
+                        Err(e) => {
+                            if let Some(m) = &mut gui.sudo_modal {
+                                m.error_message = Some(e.to_string());
+                                m.password_buffer.clear();
+                            }
+                        }
+                    }
+                }
+            } else {
+                if is_key_pressed(KeyCode::Backspace) {
+                    if let Some(m) = &mut gui.sudo_modal {
+                        m.password_buffer.pop();
+                    }
+                }
+                while let Some(c) = get_char_pressed() {
+                    if !c.is_control() {
+                        if let Some(m) = &mut gui.sudo_modal {
+                            m.password_buffer.push(c);
+                        }
+                    }
+                }
+            }
+        } else if let Some(modal) = gui.modal.clone() {
             // Modal input handling
             if is_key_pressed(KeyCode::Y) {
                 let target_idx = modal.target_index;
@@ -254,23 +334,42 @@ pub async fn run_gui(app: App) {
 
             // Bulldozer batch wipe in Scrapyard mode
             if is_key_pressed(KeyCode::C) && gui.app.is_in_scrapyard() {
-                for p in &placements {
-                    let ground = GuiApp::ground_y(screen_h);
-                    let top_y = ground - p.height;
-                    gui.spawn_demolition_particles(
-                        p.x,
-                        top_y,
-                        p.width,
-                        p.height,
-                        Color::new(0.85, 0.45, 0.18, 1.0),
-                    );
-                }
-                let _ = gui.app.execute_bulldozer();
-                gui.avatar.x = GuiApp::STREET_MARGIN_LEFT;
-                gui.avatar.vx = 0.0;
-                gui.camera_x = 0.0;
-                if let Some((msg, is_err)) = gui.app.status_message.take() {
-                    gui.banner_message = Some((msg, is_err, 3.5));
+                let has_sudo = gui.app.root_node.children.iter().any(|c| c.requires_sudo);
+                if has_sudo {
+                    let total_elevated: u64 = gui.app.root_node.children.iter()
+                        .filter(|c| c.requires_sudo)
+                        .map(|c| c.size)
+                        .sum();
+                    gui.sudo_modal = Some(GuiSudoModal {
+                        target_index: None,
+                        target_name: if gui.app.language == Language::Vi {
+                            "San phẳng toàn bộ (Bulldozer All)".into()
+                        } else {
+                            "Bulldozer All (Batch Purge)".into()
+                        },
+                        target_size_formatted: format_bytes(total_elevated),
+                        password_buffer: String::new(),
+                        error_message: None,
+                    });
+                } else {
+                    for p in &placements {
+                        let ground = GuiApp::ground_y(screen_h);
+                        let top_y = ground - p.height;
+                        gui.spawn_demolition_particles(
+                            p.x,
+                            top_y,
+                            p.width,
+                            p.height,
+                            Color::new(0.85, 0.45, 0.18, 1.0),
+                        );
+                    }
+                    let _ = gui.app.execute_bulldozer(None);
+                    gui.avatar.x = GuiApp::STREET_MARGIN_LEFT;
+                    gui.avatar.vx = 0.0;
+                    gui.camera_x = 0.0;
+                    if let Some((msg, is_err)) = gui.app.status_message.take() {
+                        gui.banner_message = Some((msg, is_err, 3.5));
+                    }
                 }
             }
             // Demolition trigger (X or Delete)
@@ -299,6 +398,14 @@ pub async fn run_gui(app: App) {
                             gui.app.language.protected_rejection_notice().to_string()
                         };
                         gui.banner_message = Some((warn, true, 4.0));
+                    } else if child.requires_sudo {
+                        gui.sudo_modal = Some(GuiSudoModal {
+                            target_index: Some(gui.app.nav.selected_index),
+                            target_name: child.name.clone(),
+                            target_size_formatted: format_bytes(child.size),
+                            password_buffer: String::new(),
+                            error_message: None,
+                        });
                     } else {
                         gui.modal = Some(GuiDemolishModal {
                             target_index: gui.app.nav.selected_index,
@@ -370,12 +477,224 @@ pub async fn run_gui(app: App) {
             render_search_overlay(q, matched_node, gui.app.language, screen_w, font_ref);
         }
         // Render Modal or Banner if active
-        if let Some(m) = &gui.modal {
+        if let Some(sm) = &gui.sudo_modal {
+            render_sudo_modal(sm, gui.app.language, screen_w, screen_h, font_ref);
+        } else if let Some(m) = &gui.modal {
             render_demolish_modal(m, gui.app.language, screen_w, screen_h, font_ref);
         } else if let Some((msg, is_err, _)) = &gui.banner_message {
             render_banner(msg, *is_err, screen_w, font_ref);
         }
 
         next_frame().await;
+    }
+}
+
+/// Executes elevated purge for target at `target_idx` with the provided `password`.
+pub fn handle_sudo_modal_submit(
+    gui: &mut GuiApp,
+    target_idx: usize,
+    password: &str,
+) -> Result<u64, String> {
+    if let Some(target) = gui.app.root_node.children.get(target_idx) {
+        let target_size = target.size;
+        let target_name = target.name.clone();
+        if let Some(action) = &target.purge_action {
+            match action.execute_with_sudo(password) {
+                Ok(()) => {
+                    if target_idx < gui.app.root_node.children.len() {
+                        gui.app.root_node.children.remove(target_idx);
+                    }
+                    gui.app.root_node.size = gui.app.root_node.size.saturating_sub(target_size);
+                    if !gui.app.root_node.children.is_empty() {
+                        if gui.app.nav.selected_index >= gui.app.root_node.children.len() {
+                            gui.app.nav.selected_index = gui.app.root_node.children.len() - 1;
+                        }
+                    } else {
+                        gui.app.nav.selected_index = 0;
+                    }
+
+                    let msg = if gui.app.language == Language::Vi {
+                        format!(
+                            "Đã gỡ bỏ thành công '{}' với quyền sudo, giải phóng {}!",
+                            target_name,
+                            format_bytes(target_size)
+                        )
+                    } else {
+                        format!(
+                            "Successfully elevated and removed '{}', freed {}!",
+                            target_name,
+                            format_bytes(target_size)
+                        )
+                    };
+                    gui.banner_message = Some((msg, false, 3.5));
+                    gui.sudo_modal = None;
+                    Ok(target_size)
+                }
+                Err(err) => {
+                    if let Some(m) = &mut gui.sudo_modal {
+                        m.error_message = Some(err.clone());
+                        m.password_buffer.clear();
+                    }
+                    Err(err)
+                }
+            }
+        } else {
+            gui.sudo_modal = None;
+            Err("Target has no purge action".to_string())
+        }
+    } else {
+        gui.sudo_modal = None;
+        Err("Target not found".to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cleaner::PurgeAction;
+    use crate::model::{BuildingCategory, BuildingNode};
+    use crate::scanner::ScannerOptions;
+    use std::path::PathBuf;
+
+    fn create_mock_gui_app_with_scrapyard() -> GuiApp {
+        let child_elevated = BuildingNode {
+            name: "Snap Inactive".into(),
+            path: PathBuf::from("/var/lib/snapd/snaps/test_1.snap"),
+            is_dir: false,
+            is_hidden: false,
+            is_system_protected: false,
+            requires_sudo: true,
+            size: 20_000,
+            file_type: BuildingCategory::Junk,
+            children: vec![],
+            modified_secs_ago: None,
+            purge_action: Some(PurgeAction::TmpUserDebris(vec![])),
+        };
+        let child_normal = BuildingNode {
+            name: "pip cache".into(),
+            path: PathBuf::from("/home/user/.cache/pip"),
+            is_dir: true,
+            is_hidden: false,
+            is_system_protected: false,
+            requires_sudo: false,
+            size: 15_000,
+            file_type: BuildingCategory::Junk,
+            children: vec![],
+            modified_secs_ago: None,
+            purge_action: Some(PurgeAction::TmpUserDebris(vec![])),
+        };
+        let root = BuildingNode {
+            name: "ĐẠI LỘ PHẾ LIỆU (SCRAPYARD)".into(),
+            path: PathBuf::from("//scrapyard"),
+            is_dir: true,
+            is_hidden: false,
+            is_system_protected: false,
+            requires_sudo: false,
+            size: 35_000,
+            file_type: BuildingCategory::Junk,
+            children: vec![child_elevated, child_normal],
+            modified_secs_ago: None,
+            purge_action: None,
+        };
+
+        let app = App::new(
+            root,
+            ScannerOptions {
+                max_depth: 3,
+                sort_mode: crate::model::SortMode::default(),
+            },
+        );
+        GuiApp::new(app)
+    }
+
+    #[test]
+    fn test_handle_sudo_modal_submit_success() {
+        let mut gui = create_mock_gui_app_with_scrapyard();
+        gui.sudo_modal = Some(GuiSudoModal {
+            target_index: Some(0),
+            target_name: "Snap Inactive".into(),
+            target_size_formatted: "20.0 KB".into(),
+            password_buffer: "dummy".into(),
+            error_message: None,
+        });
+
+        assert_eq!(gui.app.root_node.children.len(), 2);
+        assert_eq!(gui.app.root_node.size, 35_000);
+
+        let result = handle_sudo_modal_submit(&mut gui, 0, "dummy");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 20_000);
+
+        // Child removed, root size updated
+        assert_eq!(gui.app.root_node.children.len(), 1);
+        assert_eq!(gui.app.root_node.children[0].name, "pip cache");
+        assert_eq!(gui.app.root_node.size, 15_000);
+
+        // Modal closed
+        assert!(gui.sudo_modal.is_none());
+        // Banner message set
+        assert!(gui.banner_message.is_some());
+        let (msg, is_err, _) = gui.banner_message.unwrap();
+        assert!(!is_err);
+        assert!(msg.contains("Snap Inactive"));
+    }
+
+    #[test]
+    fn test_handle_sudo_modal_submit_failure() {
+        let mut gui = create_mock_gui_app_with_scrapyard();
+        // Set action that fails
+        gui.app.root_node.children[0].purge_action = Some(PurgeAction::Command(
+            "__nonexistent_binary_xyz_123__".into(),
+            vec![],
+        ));
+        gui.sudo_modal = Some(GuiSudoModal {
+            target_index: Some(0),
+            target_name: "Snap Inactive".into(),
+            target_size_formatted: "20.0 KB".into(),
+            password_buffer: "wrong_password".into(),
+            error_message: None,
+        });
+
+        let result = handle_sudo_modal_submit(&mut gui, 0, "wrong_password");
+        assert!(result.is_err());
+
+        // Child NOT removed, root size unchanged
+        assert_eq!(gui.app.root_node.children.len(), 2);
+        assert_eq!(gui.app.root_node.size, 35_000);
+
+        // Modal remains open, password cleared, error set
+        assert!(gui.sudo_modal.is_some());
+        let modal = gui.sudo_modal.unwrap();
+        assert_eq!(modal.password_buffer, "");
+        assert!(modal.error_message.is_some());
+    }
+
+    #[test]
+    fn test_requires_sudo_triggers_gui_sudo_modal() {
+        let gui = create_mock_gui_app_with_scrapyard();
+        let elevated_child = &gui.app.root_node.children[0];
+        assert!(elevated_child.requires_sudo);
+        assert!(!elevated_child.is_system_protected);
+
+        // If requires_sudo is true and not protected, GuiSudoModal should be instantiated
+        let sudo_modal = if elevated_child.is_system_protected {
+            None
+        } else if elevated_child.requires_sudo {
+            Some(GuiSudoModal {
+                target_index: Some(0),
+                target_name: elevated_child.name.clone(),
+                target_size_formatted: format_bytes(elevated_child.size),
+                password_buffer: String::new(),
+                error_message: None,
+            })
+        } else {
+            None
+        };
+
+        assert!(sudo_modal.is_some());
+        let m = sudo_modal.unwrap();
+        assert_eq!(m.target_name, "Snap Inactive");
+        assert_eq!(m.password_buffer, "");
+        assert!(m.error_message.is_none());
     }
 }

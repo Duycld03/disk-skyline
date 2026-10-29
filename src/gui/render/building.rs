@@ -11,7 +11,7 @@ pub fn render_street_radar(
     screen_w: f32,
     time: f64,
 ) {
-    if placements.is_empty() || max_street_x <= 0.0 {
+    if placements.is_empty() || max_street_x <= screen_w {
         return;
     }
 
@@ -27,7 +27,7 @@ pub fn render_street_radar(
     // Draw building profile ticks
     for p in placements {
         let bx = rx + (p.x / max_street_x) * rw;
-        let bw = ((p.width / max_street_x) * rw).max(2.0);
+        let bw = ((p.width / max_street_x) * rw).clamp(4.0, 24.0);
         let bh = ((p.height / 380.0) * (rh - 4.0)).clamp(2.0, rh - 4.0);
         let by = ry + rh - 2.0 - bh;
         draw_rectangle(bx, by, bw, bh, Color::new(0.3, 0.6, 0.85, 0.8));

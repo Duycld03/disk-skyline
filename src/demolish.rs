@@ -87,6 +87,95 @@ impl DemolishState {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SudoAction {
+    Pending,
+    Submit(String),
+    Cancelled,
+}
+
+#[derive(Debug, Clone)]
+pub struct SudoModalState {
+    pub target_index: Option<usize>,
+    pub target_name: String,
+    pub target_size: u64,
+    pub password_buffer: String,
+    pub is_active: bool,
+    pub error_message: Option<String>,
+}
+
+pub trait IntoKeyEvent {
+    fn into_key_event(self) -> KeyEvent;
+}
+
+impl IntoKeyEvent for KeyEvent {
+    fn into_key_event(self) -> KeyEvent {
+        self
+    }
+}
+
+impl IntoKeyEvent for KeyCode {
+    fn into_key_event(self) -> KeyEvent {
+        KeyEvent::new(self, crossterm::event::KeyModifiers::NONE)
+    }
+}
+
+impl SudoModalState {
+    pub fn new(target_name: String, target_size: u64) -> Self {
+        Self {
+            target_index: None,
+            target_name,
+            target_size,
+            password_buffer: String::new(),
+            is_active: true,
+            error_message: None,
+        }
+    }
+
+    pub fn new_with_index(
+        target_index: Option<usize>,
+        target_name: String,
+        target_size: u64,
+    ) -> Self {
+        Self {
+            target_index,
+            target_name,
+            target_size,
+            password_buffer: String::new(),
+            is_active: true,
+            error_message: None,
+        }
+    }
+
+    pub fn handle_key<K: IntoKeyEvent>(&mut self, key: K) -> SudoAction {
+        let key = key.into_key_event();
+        if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL)
+            && matches!(key.code, KeyCode::Char('c') | KeyCode::Char('C'))
+        {
+            self.is_active = false;
+            return SudoAction::Cancelled;
+        }
+        match key.code {
+            KeyCode::Esc => {
+                self.is_active = false;
+                SudoAction::Cancelled
+            }
+            KeyCode::Char(c) => {
+                self.password_buffer.push(c);
+                SudoAction::Pending
+            }
+            KeyCode::Backspace => {
+                self.password_buffer.pop();
+                SudoAction::Pending
+            }
+            KeyCode::Enter => {
+                SudoAction::Submit(self.password_buffer.clone())
+            }
+            _ => SudoAction::Pending,
+        }
+    }
+}
+
 /// Executes filesystem deletion and mutates in-memory tree directly without full rescan
 pub fn execute_demolition(
     state: &DemolishState,
@@ -122,25 +211,49 @@ pub fn execute_demolition(
 }
 
 /// Executes sequential bulldozer purge across all cleanable targets in the Scrapyard Avenue
-pub fn execute_bulldozer_purge(parent_node: &mut BuildingNode) -> Result<u64, std::io::Error> {
+pub fn execute_bulldozer_purge(
+    parent_node: &mut BuildingNode,
+    sudo_password: Option<&str>,
+) -> Result<u64, std::io::Error> {
     let mut total_freed = 0u64;
     let mut i = 0;
     while i < parent_node.children.len() {
         let is_protected = parent_node.children[i].is_system_protected;
-        let requires_sudo = parent_node.children[i]
-            .purge_action
-            .as_ref()
-            .map(|a| a.requires_sudo())
-            .unwrap_or(false);
+        let requires_sudo = parent_node.children[i].requires_sudo
+            || parent_node.children[i]
+                .purge_action
+                .as_ref()
+                .map(|a| a.requires_sudo())
+                .unwrap_or(false);
 
-        // Sudo Safety Guard: Bulldozer only purges user-level targets without triggering PolicyKit prompts.
-        // Targets requiring sudo (e.g. Snap, APT) are preserved on the avenue for explicit manual action.
-        if is_protected || requires_sudo {
+        // System-protected paths are NEVER purged by bulldozer
+        if is_protected {
             i += 1;
             continue;
         }
 
-        if let Some(action) = parent_node.children[i].purge_action.clone() {
+        if requires_sudo {
+            if let Some(pwd) = sudo_password {
+                if let Some(action) = parent_node.children[i].purge_action.clone() {
+                    match action.execute_with_sudo(pwd) {
+                        Ok(()) => {
+                            let removed = parent_node.children.remove(i);
+                            total_freed = total_freed.saturating_add(removed.size);
+                        }
+                        Err(_) => {
+                            // Retain target in avenue if purge failed
+                            i += 1;
+                        }
+                    }
+                } else {
+                    i += 1;
+                }
+            } else {
+                // When sudo_password is None, skip targets where requires_sudo == true
+                i += 1;
+                continue;
+            }
+        } else if let Some(action) = parent_node.children[i].purge_action.clone() {
             match action.execute() {
                 Ok(()) => {
                     let removed = parent_node.children.remove(i);
@@ -157,6 +270,133 @@ pub fn execute_bulldozer_purge(parent_node: &mut BuildingNode) -> Result<u64, st
     }
     parent_node.size = parent_node.size.saturating_sub(total_freed);
     Ok(total_freed)
+}
+
+/// Renders modal overlay for sudo password authentication
+pub fn render_sudo_modal(
+    frame: &mut Frame,
+    state: &SudoModalState,
+    area: Rect,
+    lang: crate::i18n::Language,
+) {
+    let modal_width = 64.min(area.width.saturating_sub(4));
+    let modal_height = 11.min(area.height.saturating_sub(2));
+
+    let x = area.x + (area.width.saturating_sub(modal_width)) / 2;
+    let y = area.y + (area.height.saturating_sub(modal_height)) / 2;
+    let modal_area = Rect::new(x, y, modal_width, modal_height);
+
+    frame.render_widget(Clear, modal_area);
+
+    let title = match lang {
+        crate::i18n::Language::Vi => " 🛡️ XÁC THỰC QUYỀN SUDO ",
+        crate::i18n::Language::En => " 🛡️ ADMIN ELEVATION REQUIRED ",
+    };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )
+        .title(title);
+
+    let target_label = match lang {
+        crate::i18n::Language::Vi => "Mục tiêu: ",
+        crate::i18n::Language::En => "Target: ",
+    };
+    let reclaimed_label = match lang {
+        crate::i18n::Language::Vi => "Giải phóng: ",
+        crate::i18n::Language::En => "Reclaimed: ",
+    };
+    let pwd_label = match lang {
+        crate::i18n::Language::Vi => "Mật khẩu sudo: ",
+        crate::i18n::Language::En => "Sudo password: ",
+    };
+
+    let masked_pwd: String = "*".repeat(state.password_buffer.len());
+
+    let mut text_lines = vec![
+        Line::from(vec![
+            Span::styled(target_label, Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                &state.target_name,
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled(reclaimed_label, Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format_bytes(state.target_size),
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Line::raw(""),
+        Line::from(vec![
+            Span::styled(
+                pwd_label,
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("[ ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                masked_pwd,
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("█", Style::default().fg(Color::White)),
+            Span::styled(" ]", Style::default().fg(Color::DarkGray)),
+        ]),
+    ];
+
+    if let Some(err) = &state.error_message {
+        text_lines.push(Line::from(Span::styled(
+            format!("❌ {}", err),
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        )));
+    } else {
+        text_lines.push(Line::raw(""));
+    }
+
+    let keys_line = match lang {
+        crate::i18n::Language::Vi => Line::from(vec![
+            Span::styled(
+                "[Enter] ",
+                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Xác nhận  ", Style::default().fg(Color::White)),
+            Span::styled(
+                "[Esc] ",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Hủy", Style::default().fg(Color::White)),
+        ]),
+        crate::i18n::Language::En => Line::from(vec![
+            Span::styled(
+                "[Enter] ",
+                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Confirm  ", Style::default().fg(Color::White)),
+            Span::styled(
+                "[Esc] ",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Cancel", Style::default().fg(Color::White)),
+        ]),
+    };
+    text_lines.push(keys_line);
+
+    let paragraph = Paragraph::new(text_lines)
+        .block(block)
+        .alignment(Alignment::Left);
+    frame.render_widget(paragraph, modal_area);
 }
 
 /// Renders modal overlay for demolition confirmation
@@ -459,7 +699,7 @@ mod tests {
             vec![child1],
         );
 
-        let freed = execute_bulldozer_purge(&mut parent).unwrap();
+        let freed = execute_bulldozer_purge(&mut parent, None).unwrap();
         assert_eq!(freed, 3000);
         assert!(parent.children.is_empty());
         assert_eq!(parent.size, 0);
@@ -508,7 +748,7 @@ mod tests {
             vec![user_child, sudo_child],
         );
 
-        let freed = execute_bulldozer_purge(&mut parent).unwrap();
+        let freed = execute_bulldozer_purge(&mut parent, None).unwrap();
         assert_eq!(freed, 2000, "Bulldozer must only free user-level targets");
         assert_eq!(
             parent.children.len(),
@@ -520,6 +760,84 @@ mod tests {
             parent.size, 5000,
             "Parent size must reflect remaining sudo target"
         );
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_sudo_modal_state_key_handling() {
+        let mut modal = SudoModalState::new("Snap Junk".into(), 1024 * 1024);
+        assert!(modal.is_active);
+        assert_eq!(modal.password_buffer, "");
+
+        // Type password 's', 'e', 'c', 'r', 'e', 't'
+        assert_eq!(modal.handle_key(KeyCode::Char('s')), SudoAction::Pending);
+        assert_eq!(modal.handle_key(KeyCode::Char('e')), SudoAction::Pending);
+        assert_eq!(modal.handle_key(KeyCode::Char('c')), SudoAction::Pending);
+        assert_eq!(modal.password_buffer, "sec");
+
+        // Backspace
+        assert_eq!(modal.handle_key(KeyCode::Backspace), SudoAction::Pending);
+        assert_eq!(modal.password_buffer, "se");
+
+        // Push more
+        modal.handle_key(KeyCode::Char('t'));
+        assert_eq!(modal.password_buffer, "set");
+
+        // Submit with Enter
+        let action = modal.handle_key(KeyCode::Enter);
+        assert_eq!(action, SudoAction::Submit("set".into()));
+        assert!(modal.is_active);
+    }
+
+    #[test]
+    fn test_sudo_modal_state_cancel() {
+        let mut modal = SudoModalState::new("Apt Cache".into(), 5000);
+        assert!(modal.is_active);
+
+        let action = modal.handle_key(KeyCode::Esc);
+        assert_eq!(action, SudoAction::Cancelled);
+        assert!(!modal.is_active);
+    }
+
+    #[test]
+    fn test_execute_bulldozer_purge_with_sudo_password() {
+        let temp_dir = std::env::temp_dir().join("test_bulldozer_sudo_exec_dir");
+        let _ = std::fs::create_dir_all(&temp_dir);
+
+        let mut sudo_child = BuildingNode::new(
+            "UserDirSudo".into(),
+            temp_dir.clone(),
+            true,
+            false,
+            4000,
+            vec![],
+        );
+        sudo_child.purge_action = Some(crate::cleaner::PurgeAction::DirectoryDelete(
+            temp_dir.clone(),
+        ));
+        sudo_child.requires_sudo = true;
+        sudo_child.is_system_protected = false;
+
+        let mut parent = BuildingNode::new(
+            "Scrapyard Avenue".into(),
+            PathBuf::from("//scrapyard"),
+            true,
+            false,
+            4000,
+            vec![sudo_child],
+        );
+
+        // Without password -> skipped
+        let freed_none = execute_bulldozer_purge(&mut parent, None).unwrap();
+        assert_eq!(freed_none, 0);
+        assert_eq!(parent.children.len(), 1);
+
+        // With password -> executed via execute_with_sudo
+        let freed_some = execute_bulldozer_purge(&mut parent, Some("dummy")).unwrap();
+        assert_eq!(freed_some, 4000);
+        assert!(parent.children.is_empty());
+        assert_eq!(parent.size, 0);
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
